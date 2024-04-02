@@ -2,37 +2,50 @@ FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
 # Set up time zone.
 ENV TZ=UTC
-COPY venv /app/venv
 
+# COPY venv /app/venv
 # RUN sh ~/venv/bin/activate
 
-RUN apt update 
+WORKDIR "/app"
 
-RUN apt install g++ -y
-RUN apt install gcc -y
-RUN apt install vim -y
-RUN apt install pip -y
+RUN apt update -y
 
-RUN pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu118
+RUN apt install -y rsync unzip vim g++ wget pip sudo
 
-RUN pip install opencv-python-headless \
-numpy \
-tqdm \
-opencv-python \
-torchmetrics \
-einops \
-torchgeometry \
-kornia \
-viser \
-trimesh \
-omegaconf \
-pykdtree
+# system packages 
+RUN DEBIAN_FRONTEND=noninteractive  apt install -y \
+    python3 \
+    python3-sdl2 \
+    python3-tk \
+    python3-pip \
+    sudo \
+    build-essential \
+    cmake \
+    libsuitesparse-dev \
+    libprotobuf-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libavutil-dev \
+    libpostproc-dev \
+    libswscale-dev \
+    libglew-dev \
+    libeigen3-dev \
+    libopencv-dev \
+    python3-pyqt5 \
+    libxcb-xinerama0 \
+    libgl1 \
+    ffmpeg \
+    libsm6 \
+    libxext6
 
-RUN apt install libgl1 -y
-RUN apt-get install ffmpeg libsm6 libxext6  -y
 
-RUN pip install ipdb
-RUN apt install sudo
+# Install python packages
+
+RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+COPY ./requirements.txt ./requirements.txt
+RUN pip install -r requirements.txt 
+
 # RUN sudo ln -snf /usr/share/zoneinfo/$TZ /etc/localtime
 
 # Install system libraries required by OpenCV.

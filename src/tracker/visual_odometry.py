@@ -21,9 +21,9 @@ import numpy as np
 import cv2
 from enum import Enum
 
-from feature_tracker import FeatureTrackerTypes, FeatureTrackingResult, FeatureTracker
-from utils_geom import poseRt
-from timer import TimerFps
+from tracker.feature_tracker import FeatureTrackerTypes, FeatureTrackingResult, FeatureTracker
+from utils.utils_geom import poseRt
+from utils.timer import TimerFps
 
 class VoStage(Enum):
     NO_IMAGES_YET   = 0     # no image received 
@@ -247,3 +247,6 @@ class VisualOdometry(object):
             pg = [self.trueX-self.t0_gt[0], self.trueY-self.t0_gt[1], self.trueZ-self.t0_gt[2]]  # the groudtruth traj starts at 0  
             self.traj3d_gt.append(pg)     
             self.poses.append(poseRt(self.cur_R, p))   
+
+if __name__ == '__main__':
+    pass
