@@ -52,5 +52,6 @@ termcolor
 pybind11
 pillow
 setuptools
-# opncv-python
+opencv-python
+matplotlib
 # order-set
