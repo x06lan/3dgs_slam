@@ -6,7 +6,7 @@ ENV TZ=UTC
 # COPY venv /app/venv
 # RUN sh ~/venv/bin/activate
 
-WORKDIR "/app"
+WORKDIR "/build"
 
 RUN apt update -y
 
@@ -41,10 +41,12 @@ RUN DEBIAN_FRONTEND=noninteractive  apt install -y \
 
 # Install python packages
 
-RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+
 
 COPY ./requirements.txt ./requirements.txt
-RUN pip install -r requirements.txt 
+RUN pip3 install -r requirements.txt 
 
 # RUN sudo ln -snf /usr/share/zoneinfo/$TZ /etc/localtime
 

@@ -36,8 +36,8 @@ yourdfpy==0.0.56
 # torch==2.1.2+cu118
 # torchaudio==2.1.2+cu118
 # torchvision==0.16.2+cu118
-torchgeometry
-torchmetrics
+# torchgeometry
+# torchmetrics
 ipdb
 
 
