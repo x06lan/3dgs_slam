@@ -84,12 +84,13 @@ if __name__ == "__main__":
         xlabel='img id', ylabel='# matches', title='# matches')
 
     img_id = 0
-    while dataset.isOk():
+    while True:
 
         img = dataset.getImage(img_id)
 
         if img is not None:
 
+            # print(img)
             vo.track(img, img_id)  # main VO function
 
             if (img_id > 2):	       # start drawing from the third image (when everything is initialized and flows in a normal way)

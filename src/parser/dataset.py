@@ -24,9 +24,10 @@ import cv2
 import os
 import glob
 import time
+import torch
 
 from multiprocessing import Process, Queue, Value
-from utils.utils_sys import Printer
+from utils.utils import read_cameras_binary, read_images_binary, read_points3d_binary
 
 
 class DatasetType(Enum):
@@ -36,11 +37,11 @@ class DatasetType(Enum):
     VIDEO = 4
     FOLDER = 5  # generic folder of pics
     LIVE = 6
+    COLMAP = 7
 
 
 def dataset_factory(settings):
     type = DatasetType.NONE
-    associations = None
     path = None
     is_color = None  # used for kitti datasets
 
@@ -76,24 +77,12 @@ def dataset_factory(settings):
 
 
 class Dataset(object):
-    def __init__(self, path, name, fps=None, associations=None, type=DatasetType.NONE):
+    def __init__(self, path, name, fps=None, type=DatasetType.NONE):
         self.path = path
         self.name = name
         self.type = type
-        self.is_ok = True
-        self.fps = fps
-        if fps is not None:
-            self.Ts = 1./fps
-        else:
-            self.Ts = None
-
-        self.timestamps = None
-        self._timestamp = None       # current timestamp if available [s]
-        # next timestamp if available otherwise an estimate [s]
-        self._next_timestamp = None
-
-    def isOk(self):
-        return self.is_ok
+        self.camera = None
+        self.images = None
 
     def getImage(self, frame_id):
         return None
@@ -113,9 +102,8 @@ class Dataset(object):
                 return img
         except:
             img = None
-            # raise IOError('Cannot open dataset: ', self.name, ', path: ', self.path)
-            Printer.red('Cannot open dataset: ',
-                        self.name, ', path: ', self.path)
+            raise IOError('Cannot open dataset: ',
+                          self.name, ', path: ', self.path)
             return img
 
     def getTimestamp(self):
@@ -123,6 +111,12 @@ class Dataset(object):
 
     def getNextTimestamp(self):
         return self._next_timestamp
+
+    def __getitem__(self, idx):
+        return self.getImage(idx)
+
+    def getCamera(self):
+        return self.camera
 
 
 class VideoDataset(Dataset):
@@ -442,3 +436,25 @@ class TumDataset(Dataset):
             self.is_ok = False
             self._timestamp = None
         return img
+
+
+class ColampDataset(Dataset):
+    def __init__(self, path):
+        super().__init__(path, "colmap", 0,  DatasetType.COLMAP)
+        self.fps = 30
+        self.base_path = self.path
+        self.name = "colmap"
+        # self.point3d =
+        self.params = torch.zeros(5)
+        colmap_path = os.path.join(path, 'colmap/sparse', '0')
+
+        self.cameras = read_cameras_binary(
+            os.path.join(colmap_path, 'cameras.bin'))
+        self.images = read_images_binary(os.path.join(
+            colmap_path, 'images.bin'))
+
+    def getImage(self, frame_id):
+        img = None
+    # def readColmapBinary(self, path: str):
+
+        # pass

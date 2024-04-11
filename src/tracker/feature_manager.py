@@ -28,7 +28,7 @@ from tracker.parameters import Parameters
 
 from tracker.feature_types import FeatureDetectorTypes, FeatureDescriptorTypes, FeatureInfo
 
-from utils.utils_sys import Printer, import_from
+from utils.utils import Printer, import_from
 from utils.utils_features import unpackSiftOctaveKps, UnpackOctaveMethod, sat_num_features, kdt_nms, ssc_nms, octree_nms, grid_nms
 from utils.utils_geom import hamming_distance, hamming_distances, l2_distance, l2_distances
 

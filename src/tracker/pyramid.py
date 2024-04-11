@@ -24,7 +24,7 @@ import numpy as np
 import cv2
 
 from utils.utils_img import img_blocks
-from utils.utils_sys import Printer
+from utils.utils import Printer
 
 
 kVerbose = True

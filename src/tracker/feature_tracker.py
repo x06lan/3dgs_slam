@@ -25,7 +25,7 @@ from tracker.feature_manager import feature_manager_factory
 from tracker.feature_types import FeatureDetectorTypes, FeatureDescriptorTypes, FeatureInfo
 from tracker.feature_matcher import feature_matcher_factory, FeatureMatcherTypes
 
-from utils.utils_sys import Printer, import_from
+from utils.utils import Printer, import_from
 from utils.utils_geom import hamming_distance, hamming_distances, l2_distance, l2_distances
 from tracker.parameters import Parameters
 

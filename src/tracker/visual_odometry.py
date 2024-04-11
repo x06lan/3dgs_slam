@@ -223,6 +223,9 @@ class VisualOdometry(object):
             print('frame: ', frame_id)
         # convert image to gray if needed
         if img.ndim > 2:
+            # print(img.shape)
+            # print(v2.Grayscale())
+            # img = v2.Grayscale()(img)
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         # check coherence of image size with camera settings
         assert (img.ndim == 2 and img.shape[0] == self.cam.height and img.shape[1] ==
