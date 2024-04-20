@@ -23,6 +23,7 @@
 # from utils.utils_geom import add_ones
 import torch
 import numpy as np
+import cv2
 
 # from utils.utils import add_ones
 
@@ -78,12 +79,18 @@ class Camera:
     def undistort_points(self, uvs):
         if self.isDistorted:
             # uvs_undistorted = cv2.undistortPoints(np.expand_dims(uvs, axis=1), self.K, self.D, None, self.K)   # =>  Error: while undistorting the points error: (-215:Assertion failed) src.isContinuous()
-            # uvs_contiguous = np.ascontiguousarray(
-            #     uvs[:, :2]).reshape((uvs.shape[0], 1, 2))
+            if isinstance(uvs, torch.Tensor):
+                uvs_contiguous = (
+                    uvs[:, :2]).contiguos().reshape((uvs.shape[0], 1, 2))
+            else:
+                uvs_contiguous = np.ascontiguousarray(
+                    uvs[:, :2]).reshape((uvs.shape[0], 1, 2))
+
             uvs_contiguous = (
-                uvs[:, :2]).contiguos().reshape((uvs.shape[0], 1, 2))
+                uvs[:, :2]).reshape((uvs.shape[0], 1, 2))
             uvs_undistorted = cv2.undistortPoints(
                 uvs_contiguous, self.K, self.distortParams, None, self.K)
+
             return uvs_undistorted.ravel().reshape(uvs_undistorted.shape[0], 2)
         else:
             return uvs

@@ -65,7 +65,7 @@ if __name__ == "__main__":
 
     # create visual odometry object
     # vo = VisualOdometry(cam, groundtruth, feature_tracker)
-    vo = VisualOdometry(cam, None, feature_tracker)
+    vo = VisualOdometry(cam, feature_tracker, None)
 
     is_draw_traj_img = True
     traj_img_size = 800

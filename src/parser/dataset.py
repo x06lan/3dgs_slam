@@ -1,7 +1,7 @@
 """
-* This file is part of PYSLAM 
+* This file is part of PYSLAM
 *
-* Copyright (C) 2016-present Luigi Freda <luigi dot freda at gmail dot com> 
+* Copyright (C) 2016-present Luigi Freda <luigi dot freda at gmail dot com>
 *
 * PYSLAM is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -19,15 +19,20 @@
 
 import sys
 import numpy as np
-from enum import Enum
-import cv2
 import os
+import cv2
 import glob
 import time
 import torch
 
+from tqdm import tqdm
+from enum import Enum
+from typing import Union, Tuple
+
+
 from multiprocessing import Process, Queue, Value
 from utils.utils import read_cameras_binary, read_images_binary, read_points3d_binary
+from utils.image import ImageInfo
 
 
 class DatasetType(Enum):
@@ -63,7 +68,7 @@ def dataset_factory(settings):
     if type == 'tum':
         dataset = TumDataset(path, name, associations, DatasetType.TUM)
     if type == 'video':
-        dataset = VideoDataset(path, name, associations, DatasetType.VIDEO)
+        dataset = VideoDataset(path, name, DatasetType.VIDEO)
     if type == 'folder':
         fps = 10  # a default value
         if 'fps' in settings:
@@ -81,8 +86,9 @@ class Dataset(object):
         self.path = path
         self.name = name
         self.type = type
-        self.camera = None
+        self.cameras = None
         self.images = None
+        self.fps = fps
 
     def getImage(self, frame_id):
         return None
@@ -112,16 +118,16 @@ class Dataset(object):
     def getNextTimestamp(self):
         return self._next_timestamp
 
-    def __getitem__(self, idx):
-        return self.getImage(idx)
+    # def __getitem__(self, idx):
+    #     return self.getImage(idx)
 
     def getCamera(self):
-        return self.camera
+        return self.cameras
 
 
 class VideoDataset(Dataset):
-    def __init__(self, path, name, associations=None, type=DatasetType.VIDEO):
-        super().__init__(path, name, None, associations, type)
+    def __init__(self, path, name, associations=None, dataType=DatasetType.VIDEO):
+        super().__init__(path, name, None, dataType)
         self.filename = path + '/' + name
         # print('video: ', self.filename)
         self.cap = cv2.VideoCapture(self.filename)
@@ -177,8 +183,8 @@ class LiveDataset(Dataset):
 
 
 class FolderDataset(Dataset):
-    def __init__(self, path, name, fps=None, associations=None, type=DatasetType.VIDEO):
-        super().__init__(path, name, fps, associations, type)
+    def __init__(self, path, name, fps=None, associations=None, dataType=DatasetType.VIDEO):
+        super().__init__(path, name, fps, dataType)
         if fps is None:
             fps = 10  # default value
         self.fps = fps
@@ -438,23 +444,64 @@ class TumDataset(Dataset):
         return img
 
 
-class ColampDataset(Dataset):
-    def __init__(self, path):
+class ColmapDataset(Dataset):
+    def __init__(self, path, downsample_factor=4):
         super().__init__(path, "colmap", 0,  DatasetType.COLMAP)
         self.fps = 30
         self.base_path = self.path
         self.name = "colmap"
         # self.point3d =
-        self.params = torch.zeros(5)
         colmap_path = os.path.join(path, 'colmap/sparse', '0')
 
-        self.cameras = read_cameras_binary(
+        # only one camera
+        self.camera = read_cameras_binary(
             os.path.join(colmap_path, 'cameras.bin'))
-        self.images = read_images_binary(os.path.join(
+        # take first one
+        self.camera = list(self.camera.values())[0]
+
+        # somehow image id not start from 0 os use dict
+        self.image_info: dict[int, ImageInfo] = read_images_binary(os.path.join(
             colmap_path, 'images.bin'))
 
-    def getImage(self, frame_id):
-        img = None
-    # def readColmapBinary(self, path: str):
+        self.downsample_factor: Union[0, 2, 3, 8] = downsample_factor
 
-        # pass
+        img_dir = os.path.join(
+            path, 'images')
+        if self.downsample_factor != 0:
+            img_dir = os.path.join(
+                path, f'images_{self.downsample_factor}')
+        self.image = []
+
+        img_ids = sorted([im.id for im in self.image_info.values()])
+
+        print('Loading images...')
+        for img_id in tqdm(img_ids):
+            img_filename = self.image_info[img_id].name
+            img_path = os.path.join(img_dir, img_filename)
+            img = loadImage(img_path)
+            self.image.append(img)
+
+        self.image_info: list[ImageInfo] = [
+            self.image_info[img_id] for img_id in img_ids]
+
+    def getImageInfo(self, frame_id) -> Union[ImageInfo, None]:
+        if frame_id < len(self.image_info):
+            return self.image_info[frame_id]
+        return None
+
+    def getImage(self, frame_id) -> Union[torch.Tensor, None]:
+        if frame_id < len(self.image_info):
+            return self.image[frame_id]
+        return None
+
+    def dump(self):
+        return (self.image, self.image_info, self.camera)
+
+
+def loadImage(image_path) -> Union[torch.Tensor, None]:
+    if not os.path.exists(image_path):
+        return None
+    image = cv2.imread(image_path)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    return torch.from_numpy(image).to(torch.uint8)

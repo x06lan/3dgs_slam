@@ -23,6 +23,7 @@ import struct
 import numpy as np
 import logging
 import cv2
+import torch
 from dataclasses import dataclass
 from termcolor import colored
 from typing import Dict, Union
@@ -243,8 +244,8 @@ def import_from(module, name, method=None):
     except:
         if method is not None:
             name = name + '.' + method
-        Printer.orange('WARNING: cannot import ' + name + ' from ' +
-                       module + ', check the file TROUBLESHOOTING.md')
+        # Printer.orange('WARNING: cannot import ' + name + ' from ' +
+        #                module + ', check the file TROUBLESHOOTING.md')
         return None
 
 
@@ -340,8 +341,8 @@ def read_images_binary(path_to_model_file: Union[str, Path]) -> Dict[int, ImageI
                 fid, num_bytes=64, format_char_sequence="idddddddi"
             )
             image_id = binary_image_properties[0]
-            qvec = np.array(binary_image_properties[1:5])
-            tvec = np.array(binary_image_properties[5:8])
+            qvec = torch.tensor(binary_image_properties[1:5])
+            tvec = torch.tensor(binary_image_properties[5:8])
             camera_id = binary_image_properties[8]
             image_name = ""
             current_char = read_next_bytes(fid, 1, "c")[0]
@@ -356,11 +357,28 @@ def read_images_binary(path_to_model_file: Union[str, Path]) -> Dict[int, ImageI
                 num_bytes=24 * num_points2D,
                 format_char_sequence="ddq" * num_points2D,
             )
-            xys = np.column_stack(
-                [tuple(map(float, x_y_id_s[0::3])),
-                 tuple(map(float, x_y_id_s[1::3]))]
-            )
-            point3D_ids = np.array(tuple(map(int, x_y_id_s[2::3])))
+            # xys = torch.column_stack(
+            #     [map(float, x_y_id_s[0::3]),
+            #      map(float, x_y_id_s[1::3])]
+            # )
+            # print(len(list(map(float, x_y_id_s[0::3]))))
+            # print(len(list(map(float, x_y_id_s[1::3]))))
+
+            # xys = torch.column_stack(
+            #     [tuple(map(float, x_y_id_s[0::3])),
+            #      tuple(map(float, x_y_id_s[1::3]))]
+            # )
+            # xys = np.column_stack(
+            #     [tuple(map(float, x_y_id_s[0::3])),
+            #      tuple(map(float, x_y_id_s[1::3]))]
+            # )
+            xys = np.column_stack([x_y_id_s[0::3],
+                                   x_y_id_s[1::3]]
+                                  )
+            xys = torch.tensor(xys)
+
+            # point3D_ids = np.array(tuple(map(int, x_y_id_s[2::3])))
+            point3D_ids = torch.tensor(tuple(map(int, x_y_id_s[2::3])))
             images[image_id] = ImageInfo(
                 id=image_id,
                 qvec=qvec,

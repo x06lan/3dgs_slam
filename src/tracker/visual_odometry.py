@@ -52,7 +52,7 @@ kUseGroundTruthScale = True
 # With this very basic approach, you need to use a ground truth in order to recover a correct inter-frame scale $s$ and estimate a
 # valid trajectory by composing $C_k = C_{k-1} * [R_{k-1,k}, s t_{k-1,k}]$.
 class VisualOdometry(object):
-    def __init__(self, cam, groundtruth, feature_tracker: FeatureTracker):
+    def __init__(self, cam, feature_tracker: FeatureTracker, groundtruth=None):
         self.stage = VoStage.NO_IMAGES_YET
         self.cam = cam
         self.cur_image = None   # current image
@@ -228,8 +228,9 @@ class VisualOdometry(object):
             # img = v2.Grayscale()(img)
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         # check coherence of image size with camera settings
-        assert (img.ndim == 2 and img.shape[0] == self.cam.height and img.shape[1] ==
-                self.cam.width), "Frame: provided image has not the same size as the camera model or image is not grayscale"
+        assert (img.ndim == 2), "Frame: provided image has not the same size as the camera model or image is not grayscale"
+        # assert (img.ndim == 2 and img.shape[0] == self.cam.height and img.shape[1] ==
+        #         self.cam.width), "Frame: provided image has not the same size as the camera model or image is not grayscale"
         self.cur_image = img
         # manage and check stage
         if (self.stage == VoStage.GOT_FIRST_IMAGE):

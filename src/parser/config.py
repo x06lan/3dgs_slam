@@ -187,5 +187,5 @@ class Config(object):
             return Camera(self.cam_settings['Camera.width'], self.cam_settings['Camera.height'],
                           self.cam_settings['Camera.fx'], self.cam_settings['Camera.fy'],
                           self.cam_settings['Camera.cx'], self.cam_settings['Camera.cy'],
-                          self.DistCoef)
+                          self.DistCoef, self.cam_settings['Camera.fps'])
         return None
