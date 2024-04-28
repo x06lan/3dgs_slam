@@ -4,6 +4,8 @@ ref https://github.com/WangFeng18/3d-gaussian-splatting
 
 ref https://github.com/luigifreda/pyslam
 
+ref https://github.com/LiheYoung/Depth-Anything
+
 test vo
 ```bash
 docker build  -t 3dgs_slam:0.1.0 .
