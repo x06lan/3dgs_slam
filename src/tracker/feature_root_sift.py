@@ -16,10 +16,10 @@
 * You should have received a copy of the GNU General Public License
 * along with PYSLAM. If not, see <http://www.gnu.org/licenses/>.
 """
-import sys 
-import math 
+import sys
+import math
 from enum import Enum
-import numpy as np 
+import numpy as np
 import cv2
 
 
@@ -32,14 +32,14 @@ class RootSIFTFeature2D:
 
     def detect(self, frame, mask=None):
         return self.feature.detect(frame, mask)
- 
-    def transform_descriptors(self, des, eps=1e-7): 
-        # apply the Hellinger kernel by first L1-normalizing and 
+
+    def transform_descriptors(self, des, eps=1e-7):
+        # apply the Hellinger kernel by first L1-normalizing and
         # taking the square-root
         des /= (des.sum(axis=1, keepdims=True) + eps)
-        des = np.sqrt(des)        
-        return des 
-            
+        des = np.sqrt(des)
+        return des
+
     def compute(self, frame, kps, eps=1e-7):
         # compute SIFT descriptors
         (kps, des) = self.feature.compute(frame, kps)
@@ -48,7 +48,7 @@ class RootSIFTFeature2D:
         if len(kps) == 0:
             return ([], None)
 
-        # apply the Hellinger kernel by first L1-normalizing and 
+        # apply the Hellinger kernel by first L1-normalizing and
         # taking the square-root
         des = self.transform_descriptors(des)
 
@@ -56,7 +56,7 @@ class RootSIFTFeature2D:
         return (kps, des)
 
     # detect keypoints and their descriptors
-    # out: kps, des 
+    # out: kps, des
     def detectAndCompute(self, frame, mask=None):
         # compute SIFT keypoints and descriptors
         (kps, des) = self.feature.detectAndCompute(frame, mask)
@@ -65,7 +65,7 @@ class RootSIFTFeature2D:
         if len(kps) == 0:
             return ([], None)
 
-        # apply the Hellinger kernel by first L1-normalizing and 
+        # apply the Hellinger kernel by first L1-normalizing and
         # taking the square-root
         des = self.transform_descriptors(des)
 
