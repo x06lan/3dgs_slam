@@ -1,71 +1,100 @@
+import multiprocessing.shared_memory
 import torch
 import cv2
 import time
 import numpy as np
+import threading
+import multiprocessing
 
 # import gaussian_cuda
 
+from utils.camera import Camera
 from parser.dataset import ColmapDataset
 from tracker.visual_odometry import VisualOdometry
 from tracker.feature_tracker_configs import FeatureTrackerConfigs
 from tracker.feature_tracker import feature_tracker_factory, FeatureTrackerTypes
 from viewer.mplot_thread import Mplot2d, Mplot3d
+from viewer.server import Viewer, ViewerData
+
+
+def log_info(data):
+    while True:
+        data.require()
+
+        if (data.change):
+            print(data.width, data.height, data.change)
+            data.change = False
+
+        data.release()
+
+        time.sleep(1)
+
+
+class Tracker():
+    def __init__(self, data):
+        self.shareData: ViewerData = data
+        self.camera = None
+        self.vo = None
+        self.img_id = 0
+
+    def create_vo(self):
+        num_features = 1000  # how many features do you want to detect and track?
+        tracker_config = FeatureTrackerConfigs.LK_FAST
+        tracker_config["num_features"] = num_features
+        feature_tracker = feature_tracker_factory(**tracker_config)
+        width = self.shareData.width
+        height = self.shareData.height
+        self.camera = Camera(width=width, height=height, cx=width/2,
+                             cy=height/2, fx=width/2, fy=height/2, distortParams=[0, 0, 0, 0, 0], fps=30)
+        self.vo = VisualOdometry(self.camera, feature_tracker, None)
+
+    def run(self):
+
+        while True:
+            if (self.vo is None and self.shareData.width > 0 and self.shareData.height > 0):
+                self.create_vo()
+
+            if (self.vo is not None):
+
+                self.shareData.require()
+                # print(self.data.width, self.data.height, self.data.image_update)
+
+                if (self.shareData.image_update):
+                    image = self.shareData.image
+                    self.shareData.image_update = False
+                    self.vo.track(image, self.img_id)
+
+                    if (len(self.vo.traj3d_est) > 0):
+                        t = self.vo.traj3d_est[-1].T[0]
+                        self.shareData.position[0] = float(t[0])
+                        self.shareData.position[1] = float(t[1])
+                        self.shareData.position[2] = float(t[2])
+                        # print(t)
+
+                self.shareData.release()
+                self.img_id += 1
+            time.sleep(0.1)
+
 
 if __name__ == "__main__":
 
-    # dataset = ColampDataset("./dataset/nerfstudio/person", 2)
-    dataset = ColmapDataset("./dataset/nerfstudio/redwoods2", 2)
-    images, images_info, camera = dataset.dump()
+    vo = None
 
-    num_features = 100  # how many features do you want to detect and track?
-    tracker_config = FeatureTrackerConfigs.LK_FAST
-    tracker_config["num_features"] = num_features
-    feature_tracker = feature_tracker_factory(**tracker_config)
+    data = ViewerData()
+    viewer = Viewer(data=data)
+    tracker = Tracker(data)
 
-    # matched_points_plt = Mplot2d(
-    #     xlabel='img id', ylabel='# matches', title='# matches')
+    viewer_thread = multiprocessing.Process(
+        target=viewer.run, args=("0.0.0.0", 8000))
+    # log_thread = multiprocessing.Process(
+    #     target=log_info, args=(data,))
+    tracker_thread = multiprocessing.Process(
+        target=tracker.run, args=())
 
-    vo = VisualOdometry(camera, feature_tracker)
+    viewer_thread.start()
+    tracker_thread.start()
+    # log_thread.start()
 
-    draw_scale = 1
-    traj_img_size = 800
-    half_traj_img_size = int(0.5 * traj_img_size)
-    traj_img = np.zeros((traj_img_size, traj_img_size, 3), dtype=np.uint8)
-    # traj_img = traj_img.numpy()
-
-    for img_id in range(len(images)):
-        image = images[img_id]
-        image_numpy = image.numpy()
-
-        image_numpy = cv2.cvtColor(image_numpy, cv2.COLOR_RGB2BGR)
-        if image is not None:
-            vo.track(image_numpy, img_id)
-        else:
-            break
-
-        if img_id > 2:
-            x, y, z = vo.traj3d_est[-1]
-            x_true, y_true, z_true = vo.traj3d_gt[-1]
-            # print(image[0][0])
-            # print(image[0][0]-vo.draw_img[0][0])
-
-            draw_x, draw_y = int(draw_scale * x) + half_traj_img_size, half_traj_img_size - int(draw_scale * z)
-            true_x, true_y = int(draw_scale * x_true) + half_traj_img_size, half_traj_img_size - int(draw_scale * z_true)
-            # estimated from green to blue
-            cv2.circle(traj_img, (draw_x, draw_y), 1, (img_id * 255 / 4540, 255 - img_id * 255 / 4540, 0), 1)
-            cv2.circle(traj_img, (true_x, true_y), 1, (0, 0, 255), 1)  # groundtruth in red
-            # write text on traj_img
-            cv2.rectangle(traj_img, (10, 20), (600, 60), (0, 0, 0), -1)
-            text = "Coordinates: x=%2fm y=%2fm z=%2fm" % (x, y, z)
-            cv2.putText(traj_img, text, (20, 40), cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 255), 1, 8)
-            # show
-            cv2.imshow("Trajectory", traj_img)
-
-            cv2.imshow("vo", vo.draw_img)
-            cv2.imshow("camera", image_numpy)
-
-        cv2.waitKey(1)
-        # time.sleep(0.1)
-
-    # err_plt.quit()
-    cv2.destroyAllWindows()
+    viewer_thread.join()
+    tracker_thread.join()
+    # log_thread.join()

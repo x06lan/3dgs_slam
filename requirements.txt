@@ -29,7 +29,6 @@ urllib3==1.26.13
 vhacdx==0.0.5
 viser==0.1.24
 wcwidth==0.2.13
-websockets==12.0
 xatlas==0.0.9
 xxhash==3.4.1
 yourdfpy==0.0.56
@@ -55,3 +54,7 @@ setuptools
 opencv-python
 matplotlib
 # order-set
+
+# viewer
+aiohttp
+aiortc

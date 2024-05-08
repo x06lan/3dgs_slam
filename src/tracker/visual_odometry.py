@@ -278,11 +278,12 @@ class VisualOdometry(object):
         if (self.t0_est is not None) and (self.t0_gt is not None):
             p = [self.cur_t[0]-self.t0_est[0], self.cur_t[1]-self.t0_est[1],
                  self.cur_t[2]-self.t0_est[2]]   # the estimated traj starts at 0
-            self.traj3d_est.append(p)
+            # self.traj3d_est.append(p)
             pg = [self.trueX-self.t0_gt[0], self.trueY-self.t0_gt[1],
                   self.trueZ-self.t0_gt[2]]  # the groudtruth traj starts at 0
             self.traj3d_gt.append(pg)
             self.poses.append(poseRt(self.cur_R, p))
+        self.traj3d_est.append(self.cur_t)
 
 
 if __name__ == '__main__':
