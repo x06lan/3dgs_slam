@@ -161,6 +161,7 @@ cython_debug/
 
 # dataset
 dataset
+bin
 
 # depth anything checkpoint
 src/depth_estimator/depth_anything/checkpoints/*
