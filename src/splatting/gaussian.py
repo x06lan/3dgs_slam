@@ -1,7 +1,7 @@
 
 import torch
 import torch.nn as nn
-import gaussian
+import gaussian_cuda
 import utils
 from renderer import Renderer
 
@@ -15,7 +15,7 @@ class Gaussians(nn.Module):
 
             self.pos = pos
             self.rgb = rgb
-            self.opacty = opacty
+            self.opacity = opacty
             self.scale = scale if scale is None else nn.parameter.Parameter(
                 scale)
             self.quaternion = quaternion if quaternion is None else nn.parameter.Parameter(
@@ -26,7 +26,7 @@ class Gaussians(nn.Module):
         else:
             self.pos = nn.parameter.Parameter(pos)
             self.rgb = nn.parameter.Parameter(rgb)
-            self.opacty = nn.parameter.Parameter(opacty)
+            self.opacity = nn.parameter.Parameter(opacty)
             self.scale = nn.parameter.Parameter(scale)
             self.quaternion = nn.parameter.Parameter(quaternion)
             self.covariance = nn.parameter.Parameter(covariance)
@@ -35,10 +35,10 @@ class Gaussians(nn.Module):
         return torch.diag_embed(self.scale)
 
     def to_cpp(self):
-        _cobj = gaussian.Gaussian3ds()
+        _cobj = gaussian_cuda.Gaussian3ds()
         _cobj.pos = self.pos.clone()
         _cobj.rgb = self.rgb.clone()
-        _cobj.opa = self.opacty.clone()
+        _cobj.opa = self.opacity.clone()
         _cobj.cov = self.covariance.clone()
         return _cobj
 
@@ -48,7 +48,7 @@ class Gaussians(nn.Module):
             return Gaussians(
                 pos=self.pos[mask],
                 rgb=self.rgb[mask],
-                opa=self.opacty[mask],
+                opa=self.opacity[mask],
                 quat=self.quaternion[mask],
                 scale=self.scale[mask],
             )
@@ -57,14 +57,14 @@ class Gaussians(nn.Module):
             return Gaussians(
                 pos=self.pos[mask],
                 rgb=self.rgb[mask],
-                opa=self.opacty[mask],
+                opa=self.opacity[mask],
                 cov=self.covariance[mask],
             )
 
     def to(self, *args, **kwargs):
         self.pos.to(*args, **kwargs)
         self.rgb.to(*args, **kwargs)
-        self.opacty.to(*args, **kwargs)
+        self.opacity.to(*args, **kwargs)
         if self.quaternion is not None:
             self.quaternion.to(*args, **kwargs)
         if self.scale is not None:
@@ -88,8 +88,8 @@ class Gaussians(nn.Module):
         RSSR = torch.bmm(RS, RS.permute(0, 2, 1))
         return RSSR
 
-    def reset_opacty(self):
-        torch.nn.init.uniform_(self.opacty, a=utils.inverse_sigmoid(
+    def reset_opacity(self):
+        torch.nn.init.uniform_(self.opacity, a=utils.inverse_sigmoid(
             0.01), b=utils.inverse_sigmoid(0.01))
 
 

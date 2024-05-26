@@ -11,7 +11,7 @@ class ImageData:
     camera_id: int
     name: str
     xys: torch.tensor
-    point3D_ids: torch.tensor
+    # point3D_ids: torch.tensor
 
 
 class ImageInfo(ImageData):

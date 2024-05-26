@@ -162,16 +162,6 @@ class _GlobalCulling(torch.autograd.Function):
 
 
 draw = _Drawer.apply
-world2camera_func = _world2camera.apply
+world2camera = _world2camera.apply
 global_culling = _GlobalCulling.apply
-trunc_exp = _trunc_exp.apply
-
-
-class Renderer():
-    def __init__(self) -> None:
-        self.draw = _Drawer.apply
-        self.world2camera = _world2camera.apply
-        self.global_culling = _GlobalCulling.apply
-        self.turn_exp = _trunc_exp.apply
-
-        pass
+trun_exp = _trunc_exp.apply
