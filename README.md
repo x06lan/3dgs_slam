@@ -19,6 +19,12 @@ docker run -it --rm -e  "DISPLAY=$DISPLAY" -v /tmp/.X11-unix:/tmp/.X11-unix -v .
 cd ./src/gaussian
 python3 setup.py install
 ```
+webgui
+```bash
+docker build  -t 3dgs_slam:0.1.0 .
+docker run -it --rm -e  "DISPLAY=$DISPLAY" -v /tmp/.X11-unix:/tmp/.X11-unix -v ./:/app -p -p 8000:8000 --privileged --gpus all 3dgs_slam:0.1.0 bash
+python3 ./src/main.py
+```
 test depth estimator
 1. create dataset/data dir and dataset/result dir
 2. put ur demo images in dataset/data
