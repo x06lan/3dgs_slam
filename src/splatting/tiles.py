@@ -9,15 +9,21 @@ from einops import repeat
 
 class Tiles:
     def __init__(self, width, height, focal_x, focal_y, device):
-        self.width = width
-        self.height = height
-        self.padded_width = int(math.ceil(self.width/16)) * 16
-        self.padded_height = int(math.ceil(self.height/16)) * 16
-        self.focal_x = focal_x
+        self.width: int = width
+        self.height: int = height
+        self.tile_size: int = 16
+        self.padded_width: int = int(
+            math.ceil(self.width/self.tile_size)) * self.tile_size
+        self.padded_height: int = int(
+            math.ceil(self.height/self.tile_size)) * self.tile_size
+        self.focal_x: float = focal_x
         self.focal_y = focal_y
-        self.n_tile_x = self.padded_width // 16
-        self.n_tile_y = self.padded_height // 16
+        self.n_tile_x: float = self.padded_width // self.tile_size
+        self.n_tile_y: float = self.padded_height // self.tile_size
         self.device = device
+
+    def __len__(self):
+        return self.tiles_top.shape[0]
 
     def crop(self, image):
         # image: padded_height x padded_width x 3
@@ -29,12 +35,12 @@ class Tiles:
     def create_tiles(self):
         self.tiles_left = torch.linspace(-self.padded_width/2,
                                          self.padded_width/2, self.n_tile_x + 1, device=self.device)[:-1]
-        self.tiles_right = self.tiles_left + 16
+        self.tiles_right = self.tiles_left + self.tile_size
         self.tiles_top = torch.linspace(-self.padded_height/2,
                                         self.padded_height/2, self.n_tile_y + 1, device=self.device)[:-1]
-        self.tiles_bottom = self.tiles_top + 16
-        self.tile_geo_length_x = 16 / self.focal_x
-        self.tile_geo_length_y = 16 / self.focal_y
+        self.tiles_bottom = self.tiles_top + self.tile_size
+        self.tile_geo_length_x = self.tile_size / self.focal_x
+        self.tile_geo_length_y = self.tile_size / self.focal_y
         self.leftmost = -self.padded_width/2/self.focal_x
         self.topmost = -self.padded_height/2/self.focal_y
 

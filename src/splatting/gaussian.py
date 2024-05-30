@@ -3,14 +3,13 @@ import torch
 import torch.nn as nn
 import gaussian_cuda
 import utils
-from renderer import Renderer
+import renderer
 
 
 class Gaussians(nn.Module):
     def __init__(self, pos, rgb, opacty, scale=None, quaternion=None, covariance=None, init_value=False):
         super().__init__()
         self.init_value = init_value
-        self.renderer = Renderer()
         if init_value:
 
             self.pos = pos
@@ -33,6 +32,21 @@ class Gaussians(nn.Module):
 
     def scale_matrix(self):
         return torch.diag_embed(self.scale)
+
+    def normalize_scale(self):
+        scale_activation = "abs"
+        if scale_activation == "abs":
+            return self.scale.abs()+utils.EPS
+        elif scale_activation == "exp":
+            return renderer.trunc_exp(self.scale)
+        else:
+            print("No support scale activation")
+            exit()
+
+    def normalize_quaternion(self):
+        normed_quat = (self.gaussians.quaternion /
+                       self.gaussians.quaternion.norm(dim=1, keepdim=True))
+        return normed_quat
 
     def to_cpp(self):
         _cobj = gaussian_cuda.Gaussian3ds()
@@ -75,9 +89,9 @@ class Gaussians(nn.Module):
     def get_gaussian_3d_cov(self, scale_activation="abs"):
         R = utils.q2r(self.quaternion)
         if scale_activation == "abs":
-            _scale = self.scale.abs()+EPS
+            _scale = self.scale.abs()+utils.EPS
         elif scale_activation == "exp":
-            _scale = self.renderer.turn_exp(self.scale)
+            _scale = renderer.turn_exp(self.scale)
         else:
             print("No support scale activation")
             exit()

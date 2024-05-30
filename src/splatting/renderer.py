@@ -1,7 +1,7 @@
 
 from typing import Any
 import torch
-import gaussian
+import gaussian_cuda
 from torch.autograd.function import once_differentiable
 
 
@@ -29,7 +29,7 @@ class _Drawer(torch.autograd.Function):
     ):
         rendered_image = torch.zeros(
             padded_height, padded_width, 3, device=gaussians_pos.device, dtype=torch.float32)
-        gaussian.draw(
+        gaussian_cuda.draw(
             gaussians_pos,
             gaussians_rgb,
             gaussians_opa,
@@ -65,7 +65,7 @@ class _Drawer(torch.autograd.Function):
         grad_rgb = torch.zeros_like(gaussians_rgb)
         grad_opa = torch.zeros_like(gaussians_opa)
         grad_cov = torch.zeros_like(gaussians_cov)
-        gaussian.draw_backward(
+        gaussian_cuda.draw_backward(
             gaussians_pos,
             gaussians_rgb,
             gaussians_opa,
@@ -108,14 +108,14 @@ class _world2camera(torch.autograd.Function):
     def forward(ctx, pos, rot, tran):
         ctx.save_for_backward(rot)
         res = torch.zeros_like(pos)
-        gaussian.world2camera(pos, rot, tran, res)
+        gaussian_cuda.world2camera(pos, rot, tran, res)
         return res
 
     @staticmethod
     def backward(ctx, grad_out):
         rot = ctx.saved_tensors[0]
         grad_inp = torch.zeros_like(grad_out)
-        gaussian.world2camera_backward(grad_out, rot, grad_inp)
+        gaussian_cuda.world2camera_backward(grad_out, rot, grad_inp)
         return grad_inp, None, None
 
 
@@ -127,7 +127,7 @@ class _GlobalCulling(torch.autograd.Function):
         culling_mask = torch.zeros(
             pos.shape[0], dtype=torch.long, device=pos.device)
 
-        gaussian.global_culling(
+        gaussian_cuda.global_culling(
             pos, quat, scale, current_rot, current_tran, res_pos, res_cov, culling_mask, near, half_width, half_height
         )
         ctx.save_for_backward(culling_mask, pos, quat,
@@ -148,7 +148,7 @@ class _GlobalCulling(torch.autograd.Function):
             (gradout_pos.shape[0], 4), device=gradout_pos.device)
         gradinput_scale = torch.zeros(
             (gradout_pos.shape[0], 3), device=gradout_pos.device)
-        gaussian.global_culling_backward(
+        gaussian_cuda.global_culling_backward(
             pos, quat, scale, current_rot, current_tran,
             gradout_pos,
             gradout_cov,
@@ -164,4 +164,4 @@ class _GlobalCulling(torch.autograd.Function):
 draw = _Drawer.apply
 world2camera = _world2camera.apply
 global_culling = _GlobalCulling.apply
-trun_exp = _trunc_exp.apply
+trunc_exp = _trunc_exp.apply

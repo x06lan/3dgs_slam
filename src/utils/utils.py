@@ -219,3 +219,43 @@ def inverse_sigmoid(y):
         return -np.log(1/y - 1)
 
     return -math.log(1/y - 1)
+
+
+def qvec2rot_matrix(qvec):
+    return np.array(
+        [
+            [
+                1 - 2 * qvec[2] ** 2 - 2 * qvec[3] ** 2,
+                2 * qvec[1] * qvec[2] - 2 * qvec[0] * qvec[3],
+                2 * qvec[3] * qvec[1] + 2 * qvec[0] * qvec[2],
+            ],
+            [
+                2 * qvec[1] * qvec[2] + 2 * qvec[0] * qvec[3],
+                1 - 2 * qvec[1] ** 2 - 2 * qvec[3] ** 2,
+                2 * qvec[2] * qvec[3] - 2 * qvec[0] * qvec[1],
+            ],
+            [
+                2 * qvec[3] * qvec[1] - 2 * qvec[0] * qvec[2],
+                2 * qvec[2] * qvec[3] + 2 * qvec[0] * qvec[1],
+                1 - 2 * qvec[1] ** 2 - 2 * qvec[2] ** 2,
+            ],
+        ]
+    )
+
+
+def q2r(qvec):
+    # qvec B x 4
+    qvec = qvec / qvec.norm(dim=1, keepdim=True)
+    rot = [
+        1 - 2 * qvec[:, 2] ** 2 - 2 * qvec[:, 3] ** 2,
+        2 * qvec[:, 1] * qvec[:, 2] - 2 * qvec[:, 0] * qvec[:, 3],
+        2 * qvec[:, 3] * qvec[:, 1] + 2 * qvec[:, 0] * qvec[:, 2],
+        2 * qvec[:, 1] * qvec[:, 2] + 2 * qvec[:, 0] * qvec[:, 3],
+        1 - 2 * qvec[:, 1] ** 2 - 2 * qvec[:, 3] ** 2,
+        2 * qvec[:, 2] * qvec[:, 3] - 2 * qvec[:, 0] * qvec[:, 1],
+        2 * qvec[:, 3] * qvec[:, 1] - 2 * qvec[:, 0] * qvec[:, 2],
+        2 * qvec[:, 2] * qvec[:, 3] + 2 * qvec[:, 0] * qvec[:, 1],
+        1 - 2 * qvec[:, 1] ** 2 - 2 * qvec[:, 2] ** 2,
+    ]
+    rot = torch.stack(rot, dim=1).reshape(-1, 3, 3)
+    return rot
