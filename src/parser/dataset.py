@@ -458,6 +458,8 @@ class ColmapDataset(Dataset):
             os.path.join(colmap_path, 'cameras.bin'))
         # take first one
         self.camera = list(self.camera.values())[0]
+        self.points3d = read_points3d_binary(
+            os.path.join(colmap_path, 'points3D.bin'))
 
         # somehow image id not start from 0 os use dict
         self.image_info: dict[int, ImageInfo] = read_images_binary(os.path.join(

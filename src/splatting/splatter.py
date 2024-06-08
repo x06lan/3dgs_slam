@@ -4,18 +4,21 @@ import torch
 import torch.nn as nn
 import gaussian_cuda
 import transforms as tf
+from typing import Union, Tuple
 
 import utils
 import gaussian_cuda
 from renderer import draw, global_culling
 from gaussian import Gaussians
 from tiles import Tiles
+from parser.dataset import ColmapDataset
 from utils.image import ImageInfo
 from utils.camera import Camera
+from utils.point import Point3D
 
 
 class Splatter(nn.Module):
-    def __init__(self, init_point=None,  load_ckpt=None, downsample=1, use_sh_coeff=False, debug=False):
+    def __init__(self, init_point=Union[Point3D, None],  load_ckpt=Union[str, None], downsample=1, use_sh_coeff=False, debug=False):
         _device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu')
         assert (_device == 'cuda', 'CUDA is not available')
@@ -28,15 +31,17 @@ class Splatter(nn.Module):
         self.w2c_r = None
         self.w2c_t = None
         self.use_sh_coeff: bool = False
+        self.gaussians: Gaussians
 
         # TODO : corrent this initialization
-        self.gaussians: Gaussians = Gaussians(
-            pos=init_point[:, :3].to(_device),
-            rgb=init_point[:, 3:6].to(_device),
-            opacty=init_point[:, 6].to(_device),
-            covariance=init_point[:, 7:].to(_device),
-            init_value=True
-        )
+        if (init_point is None):
+            self.gaussians = Gaussians(
+                pos=init_point[:, :3].to(_device),
+                rgb=init_point[:, 3:6].to(_device),
+                opacty=init_point[:, 6].to(_device),
+                covariance=init_point[:, 7:].to(_device),
+                init_value=True
+            )
         if load_ckpt is not None:
             # load checkpoint
             ckpt = torch.load(load_ckpt)
@@ -46,21 +51,21 @@ class Splatter(nn.Module):
             self.gaussians.quaternion = nn.Parameter(ckpt["quaternion"])
             self.gaussians.scale = nn.Parameter(ckpt["scale"])
 
-    def RayInfo(self, tile_info: Tiles, img_info: ImageInfo):
+    def w2c(self, img_info: ImageInfo):
         world_camera = tf.SE3.from_rotation_and_translation(
             tf.SO3(img_info.qvec), img_info.tvec,
         )
         w2c_q = torch.from_numpy(world_camera.rotation().wxyz).to(
-            torch.float32).to(tile_info.device)
+            torch.float32)
 
         w2c_t = torch.from_numpy(world_camera.translation()).to(
-            torch.float32).to(tile_info.device)
+            torch.float32)
 
         w2c_r = (w2c_q[-1].unsqueeze(0)
-                 ).squeeze().to(torch.float32).to(tile_info.device)
+                 ).squeeze().to(torch.float32)
+        return w2c_r, w2c_t
 
-        self.w2c_r = w2c_r
-        self.w2c_t = w2c_t
+    def RayInfo(self, tile_info: Tiles, w2c_r: torch.tensor, w2c_t: torch.tensor):
 
         # invert of world to camera
         # c2w = torch.inverse(world_camera.matrix()).to(tile_info.device)
@@ -96,7 +101,7 @@ class Splatter(nn.Module):
 
         self.tile_info_cpp = self.tile_info.create_tiles()
 
-    def project_culling(self):
+    def project_culling(self, w2c_r: torch.tensor, w2c_t: torch.tensor):
 
         magic_number = 1.2
 
@@ -127,7 +132,7 @@ class Splatter(nn.Module):
 
         return culled_gaussians, mask
 
-    def render(self, gaussians: Gaussians):
+    def render(self, gaussians: Gaussians,  w2c_r: torch.tensor, w2c_t: torch.tensor):
         if len(gaussians.pos) == 0:
             return torch.zeros(self.tile_info.padded_height, self.tile_info.padded_width, 3, device=self.device, dtype=torch.float32)
 
@@ -197,6 +202,9 @@ class Splatter(nn.Module):
         gaussians = gaussians.filte(sort_indices)
 
         # render tiles
+        rays_o, lefttop, dx, dy = self.RayInfo(
+            self.tile_info, w2c_r, w2c_t)
+
         rendered_image = draw(
             self.tile_gaussians.pos,
             self.tile_gaussians.rgb,
@@ -217,12 +225,25 @@ class Splatter(nn.Module):
             dy,
             dy,
         )
+        return rendered_image
 
     def forward(self, image, imageInfo: utils.image.ImageInfo):
+        w2c_r, w2c_t = self.w2c(imageInfo)
 
-        # self.set_camera(Camera(imageInfo))
-        rays_o, lefttop, dx, dy = self.RayInfo(self.tile_info, imageInfo)
+        gaussians, mask = self.project_culling(w2c_r, w2c_t)
+        padded_rendered_image = self.render(gaussians, w2c_r, w2c_t)
 
-        gaussians, mask = self.project_culling()
-        rendered_image = self.render(gaussians)
-        pass
+        padded_render_image = torch.clamp(padded_rendered_image, 0, 1)
+        render_image = self.tile_info.crop(padded_render_image)
+
+        return render_image
+
+
+if __name__ == "__main__":
+
+    dataset = ColmapDataset("dataset/nerfstudio/aspen/")
+
+    splatter = Splatter(init_point=dataset.points3d,
+                        downsample=1, use_sh_coeff=False)
+    splatter.set_camera(dataset.camera)
+    render_image = splatter.forward(dataset.images[0], dataset.imageInfo[0])
