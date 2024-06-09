@@ -2,7 +2,7 @@ import math
 import torch
 import torch.nn as nn
 
-import gaussian
+import gaussian_cuda
 
 from einops import repeat
 
@@ -58,7 +58,7 @@ class Tiles:
         self.tiles_bottom = repeat(
             self.tiles_bottom, "b -> (b c)", c=self.n_tile_x)
 
-        _tile = gaussian.Tiles()
+        _tile = gaussian_cuda.Tiles()
         _tile.top = self.tiles_top
         _tile.bottom = self.tiles_bottom
         _tile.left = self.tiles_left

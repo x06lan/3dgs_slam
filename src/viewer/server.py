@@ -213,5 +213,6 @@ class Viewer:
 
 
 if __name__ == "__main__":
-
-    pass
+    data = ViewerData()
+    viwer = Viewer(data)
+    viwer.run("0.0.0.0", 8000)

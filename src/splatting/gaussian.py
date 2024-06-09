@@ -2,33 +2,42 @@
 import torch
 import torch.nn as nn
 import gaussian_cuda
-import utils
 import renderer
+from utils import utils
 
 
 class Gaussians(nn.Module):
     def __init__(self, pos, rgb, opacty, scale=None, quaternion=None, covariance=None, init_value=False):
-        super().__init__()
+
+        super(Gaussians, self).__init__()
+
         self.init_value = init_value
+
         if init_value:
 
-            self.pos = pos
-            self.rgb = rgb
-            self.opacity = opacty
+            self.pos = nn.parameter.Parameter(pos)
+            self.rgb = nn.parameter.Parameter(rgb)
+            self.opacity = nn.parameter.Parameter(opacty)
             self.scale = scale if scale is None else nn.parameter.Parameter(
                 scale)
             self.quaternion = quaternion if quaternion is None else nn.parameter.Parameter(
                 quaternion)
             self.covariance = covariance if covariance is None else nn.parameter.Parameter(
                 covariance)
-
         else:
-            self.pos = nn.parameter.Parameter(pos)
-            self.rgb = nn.parameter.Parameter(rgb)
-            self.opacity = nn.parameter.Parameter(opacty)
-            self.scale = nn.parameter.Parameter(scale)
-            self.quaternion = nn.parameter.Parameter(quaternion)
-            self.covariance = nn.parameter.Parameter(covariance)
+            # self.pos = nn.parameter.Parameter(pos)
+            # self.rgb = nn.parameter.Parameter(rgb)
+            # self.opacity = nn.parameter.Parameter(opacty)
+            # self.scale = nn.parameter.Parameter(scale)
+            # self.quaternion = nn.parameter.Parameter(quaternion)
+            # self.covariance = nn.parameter.Parameter(covariance)
+
+            self.pos = pos
+            self.rgb = rgb
+            self.opacity = opacty
+            self.scale = scale
+            self.quaternion = quaternion
+            self.covariance = covariance
 
     def scale_matrix(self):
         return torch.diag_embed(self.scale)
@@ -105,7 +114,3 @@ class Gaussians(nn.Module):
     def reset_opacity(self):
         torch.nn.init.uniform_(self.opacity, a=utils.inverse_sigmoid(
             0.01), b=utils.inverse_sigmoid(0.01))
-
-
-if __name__ == "__main__":
-    pass

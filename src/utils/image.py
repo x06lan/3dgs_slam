@@ -17,6 +17,7 @@ class BaseImageData:
     # point3D_ids: torch.tensor
 
 
+# @dataclass(frozen=True)
 class ImageInfo(BaseImageData):
     def __init__(self, id, qvec, tvec, camera_id, name, xys):
         super().__init__(id, qvec, tvec, camera_id, name, xys)

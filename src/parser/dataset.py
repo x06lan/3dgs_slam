@@ -472,8 +472,8 @@ class ColmapDataset(Dataset):
         if self.downsample_factor != 0:
             img_dir = os.path.join(
                 path, f'images_{self.downsample_factor}')
-        self.image = []
 
+        self.images = []
         img_ids = sorted([im.id for im in self.image_info.values()])
 
         print('Loading images...')
@@ -481,7 +481,7 @@ class ColmapDataset(Dataset):
             img_filename = self.image_info[img_id].name
             img_path = os.path.join(img_dir, img_filename)
             img = loadImage(img_path)
-            self.image.append(img)
+            self.images.append(img)
 
         self.image_info: list[ImageInfo] = [
             self.image_info[img_id] for img_id in img_ids]

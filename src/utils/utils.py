@@ -1,7 +1,7 @@
 """
-* This file is part of PYSLAM 
+* This file is part of PYSLAM
 *
-* Copyright (C) 2016-present Luigi Freda <luigi dot freda at gmail dot com> 
+* Copyright (C) 2016-present Luigi Freda <luigi dot freda at gmail dot com>
 *
 * PYSLAM is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -169,7 +169,7 @@ def read_images_binary(path_to_model_file: Union[str, Path]) -> Dict[int, ImageI
                 camera_id=camera_id,
                 name=image_name,
                 xys=xys,
-                point3D_ids=point3D_ids,
+                # point3D_ids=point3D_ids,
             )
     return images
 
@@ -222,25 +222,28 @@ def inverse_sigmoid(y):
 
 
 def qvec2rot_matrix(qvec):
-    return np.array(
+    temp = [
         [
-            [
-                1 - 2 * qvec[2] ** 2 - 2 * qvec[3] ** 2,
-                2 * qvec[1] * qvec[2] - 2 * qvec[0] * qvec[3],
-                2 * qvec[3] * qvec[1] + 2 * qvec[0] * qvec[2],
-            ],
-            [
-                2 * qvec[1] * qvec[2] + 2 * qvec[0] * qvec[3],
-                1 - 2 * qvec[1] ** 2 - 2 * qvec[3] ** 2,
-                2 * qvec[2] * qvec[3] - 2 * qvec[0] * qvec[1],
-            ],
-            [
-                2 * qvec[3] * qvec[1] - 2 * qvec[0] * qvec[2],
-                2 * qvec[2] * qvec[3] + 2 * qvec[0] * qvec[1],
-                1 - 2 * qvec[1] ** 2 - 2 * qvec[2] ** 2,
-            ],
-        ]
-    )
+            1 - 2 * qvec[2] ** 2 - 2 * qvec[3] ** 2,
+            2 * qvec[1] * qvec[2] - 2 * qvec[0] * qvec[3],
+            2 * qvec[3] * qvec[1] + 2 * qvec[0] * qvec[2],
+        ],
+        [
+            2 * qvec[1] * qvec[2] + 2 * qvec[0] * qvec[3],
+            1 - 2 * qvec[1] ** 2 - 2 * qvec[3] ** 2,
+            2 * qvec[2] * qvec[3] - 2 * qvec[0] * qvec[1],
+        ],
+        [
+            2 * qvec[3] * qvec[1] - 2 * qvec[0] * qvec[2],
+            2 * qvec[2] * qvec[3] + 2 * qvec[0] * qvec[1],
+            1 - 2 * qvec[1] ** 2 - 2 * qvec[2] ** 2,
+        ],
+    ]
+    if isinstance(qvec, torch.Tensor):
+        return torch.tensor(temp)
+    if isinstance(qvec, np.ndarray):
+        return np.array(temp)
+    return None
 
 
 def q2r(qvec):
