@@ -1,8 +1,12 @@
 import math
+import numpy as np
 import torch
 import torch.nn as nn
 import gaussian_cuda
+import ipdb
+import cv2
 from typing import Union, Tuple
+
 from pykdtree.kdtree import KDTree
 
 
@@ -19,10 +23,10 @@ from utils.point import Point3D
 
 class Splatter(nn.Module):
     def __init__(self, init_points: Union[Point3D, None] = None,  load_ckpt: Union[str, None] = None, downsample=1, use_sh_coeff=False, debug=False):
-        _device = torch.device(
-            'cuda' if torch.cuda.is_available() else 'cpu')
-        # assert (_device == 'cuda', 'CUDA is not available')
-        self.device = _device
+
+        super().__init__()
+
+        self.device = torch.device("cuda")
         self.downsample: int = downsample
         self.debug: bool = debug
         self.near: float = 0.3
@@ -30,8 +34,8 @@ class Splatter(nn.Module):
         self.init_scale = 0.1
         self.init_opacity = 0.8
         self.camera: Camera = None
-        self.w2c_r = None
-        self.w2c_t = None
+        # self.w2c_r = None
+        # self.w2c_t = None
         self.use_sh_coeff: bool = False
         self.gaussians: Gaussians = None
 
@@ -44,18 +48,20 @@ class Splatter(nn.Module):
                 _pos.append(torch.from_numpy(point.xyz))
                 _rgb.append(utils.inverse_sigmoid(torch.from_numpy(point.rgb)))
 
-            rgb = torch.stack(_rgb).to(torch.float32).to(_device)
-            pos = torch.stack(_pos).to(torch.float32).to(_device)
+            rgb = torch.stack(_rgb).to(torch.float32).to(self.device)
+            pos = torch.stack(_pos).to(torch.float32).to(self.device)
+
             _pos_np = pos.cpu().numpy()
             kd_tree = KDTree(_pos_np)
             dist, idx = kd_tree.query(_pos_np, k=4)
             mean_min_three_dis = dist[:, 1:].mean(axis=1)
             mean_min_three_dis = torch.Tensor(mean_min_three_dis).to(
                 torch.float32) * self.init_scale
+
             self.gaussians = Gaussians(
                 pos=pos,
                 rgb=rgb,
-                opacty=torch.ones(len(init_points)).to(_device),
+                opacty=torch.ones(len(init_points)).to(self.device),
                 quaternion=torch.Tensor([1, 0, 0, 0]).unsqueeze(dim=0).repeat(
                     len(init_points), 1).to(torch.float32).to(self.device),  # B x 4
                 scale=torch.ones(len(init_points), 3).to(torch.float32).to(
@@ -64,21 +70,44 @@ class Splatter(nn.Module):
             )
         if load_ckpt is not None:
             # load checkpoint
+
             ckpt = torch.load(load_ckpt)
-            self.gaussians.pos = nn.Parameter(ckpt["pos"])
-            self.gaussians.opacity = nn.Parameter(ckpt["opacity"])
-            self.gaussians.rgb = nn.Parameter(ckpt["rgb"])
-            self.gaussians.quaternion = nn.Parameter(ckpt["quaternion"])
-            self.gaussians.scale = nn.Parameter(ckpt["scale"])
+            # ipdb.set_trace()
+            self.gaussians = Gaussians(
+                pos=ckpt["pos"],
+                rgb=ckpt["rgb"],
+                opacty=ckpt["opa"],
+                quaternion=ckpt["quat"],  # B x 4
+                scale=ckpt["scale"],
+                init_value=True
+            )
+
+            # self.gaussians.pos = nn.Parameter(ckpt["pos"])
+            # # self.gaussians.opacity = nn.Parameter(ckpt["opacity"])
+            # self.gaussians.opacity = nn.Parameter(ckpt["opa"])
+            # self.gaussians.rgb = nn.Parameter(ckpt["rgb"])
+            # # self.gaussians.quaternion = nn.Parameter(ckpt["quaternion"])
+            # self.gaussians.quaternion = nn.Parameter(ckpt["quat"])
+            # self.gaussians.scale = nn.Parameter(ckpt["scale"])
+
+    def save_ckpt(self, path):
+        ckpt = {
+            "pos": self.gaussians.pos,
+            "opa": self.gaussians.opacity,
+            "rgb": self.gaussians.rgb,
+            "quat": self.gaussians.quaternion,
+            "scale": self.gaussians.scale,
+        }
+        torch.save(ckpt, path)
 
     def w2c(self, img_info: ImageInfo):
 
-        w2c_q = torch.tensor(img_info.qvec).to(torch.float32)
-        print(w2c_q)
-        w2c_t = torch.tensor(img_info.tvec).to(torch.float32)
+        w2c_q = img_info.qvec
+        w2c_t = img_info.tvec.to(self.device)
 
-        w2c_r = utils.qvec2rot_matrix(w2c_q).squeeze().to(torch.float32)
-        return w2c_r, w2c_t
+        w2c_r = utils.qvec2rot_matrix(w2c_q).squeeze().to(
+            torch.float32)
+        return w2c_r.to(self.device), w2c_t.to(self.device)
 
     def RayInfo(self, tile_info: Tiles, w2c_r: torch.tensor, w2c_t: torch.tensor):
 
@@ -120,18 +149,22 @@ class Splatter(nn.Module):
 
         magic_number = 1.2
 
+        # self.gaussians.normalize_quaternion(),
+        # self.gaussians.normalize_scale(),
+
         # 2d position,2d covariance, mask
         _pos, _cov, mask = global_culling(
             self.gaussians.pos,
             self.gaussians.normalize_quaternion(),
             self.gaussians.normalize_scale(),
-            self.w2c_r.detach(),
-            self.w2c_t.detach(),
+            w2c_r.detach(),
+            w2c_t.detach(),
             self.near,
-            self.camera.width*magic_number/2.0/self.camera.focal_x,
-            self.camera.height*magic_number/2.0/self.camera.focal_y,
+            self.camera.width*magic_number/2.0/self.camera.fx,
+            self.camera.height*magic_number/2.0/self.camera.fy,
         )
         mask = mask.bool()
+
         _rgb = self.gaussians.rgb[mask]
         if self.use_sh_coeff:
             _rgb = _rgb[mask].sigmoid()
@@ -242,6 +275,11 @@ class Splatter(nn.Module):
         )
         return rendered_image
 
+    def save_image(path, image):
+        img_npy = image.clip(0, 1).detach().cpu().numpy()
+        cv2.imwrite(
+            path, (img_npy*255).astype(np.uint8)[..., ::-1])
+
     def forward(self,  imageInfo: ImageInfo):
         w2c_r, w2c_t = self.w2c(imageInfo)
 
@@ -256,12 +294,15 @@ class Splatter(nn.Module):
 
 if __name__ == "__main__":
 
-    dataset = ColmapDataset("../dataset/nerfstudio/aspen/")
+    dataset = ColmapDataset("dataset/nerfstudio/aspen/")
     # print(dataset.camera)
     # print(dataset.images[0])
     # print(dataset.image_info[0])
 
-    splatter = Splatter(init_points=dataset.points3d,
-                        downsample=1, use_sh_coeff=False)
-    # splatter.set_camera(dataset.camera)
-    # render_image = splatter.forward(dataset.image_info[0])
+    # splatter = Splatter(init_points=dataset.points3d,
+    #                     downsample=1, use_sh_coeff=False)
+    splatter = Splatter(load_ckpt="ckpt.pth")
+    splatter.set_camera(dataset.camera)
+    render_image = splatter.forward(dataset.image_info[0])
+    # save image
+    Splatter.save_image("output.png", render_image)

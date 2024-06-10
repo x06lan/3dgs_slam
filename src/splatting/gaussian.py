@@ -53,8 +53,8 @@ class Gaussians(nn.Module):
             exit()
 
     def normalize_quaternion(self):
-        normed_quat = (self.gaussians.quaternion /
-                       self.gaussians.quaternion.norm(dim=1, keepdim=True))
+        normed_quat = (self.quaternion /
+                       self.quaternion.norm(dim=1, keepdim=True))
         return normed_quat
 
     def to_cpp(self):

@@ -124,8 +124,8 @@ def read_images_binary(path_to_model_file: Union[str, Path]) -> Dict[int, ImageI
                 fid, num_bytes=64, format_char_sequence="idddddddi"
             )
             image_id = binary_image_properties[0]
-            qvec = torch.tensor(binary_image_properties[1:5])
-            tvec = torch.tensor(binary_image_properties[5:8])
+            qvec = torch.tensor(binary_image_properties[1:5]).to(torch.float32)
+            tvec = torch.tensor(binary_image_properties[5:8]).to(torch.float32)
             camera_id = binary_image_properties[8]
             image_name = ""
             current_char = read_next_bytes(fid, 1, "c")[0]
