@@ -37,6 +37,8 @@ class Splatter(nn.Module):
         # self.w2c_r = None
         # self.w2c_t = None
         self.use_sh_coeff: bool = False
+        self.render_weight_normalize: bool = False
+        self.fast_drawing: bool = False
         self.gaussians: Gaussians = None
 
         # TODO : corrent this initialization
@@ -68,7 +70,7 @@ class Splatter(nn.Module):
                     self.device)*mean_min_three_dis.unsqueeze(dim=1).to(self.device),
                 init_value=True
             )
-        if load_ckpt is not None:
+        elif load_ckpt is not None:
             # load checkpoint
 
             ckpt = torch.load(load_ckpt)
@@ -113,7 +115,7 @@ class Splatter(nn.Module):
 
         # invert of world to camera
         # c2w = torch.inverse(world_camera.matrix()).to(tile_info.device)
-        c2w = torch.inverse(w2c_r.matrix()).to(tile_info.device)
+        c2w = torch.inverse(w2c_r).to(tile_info.device)
 
         rays_o = -c2w @ w2c_t
         W = tile_info.padded_width
@@ -194,7 +196,7 @@ class Splatter(nn.Module):
 
         tile_culling_method = "prob2"
         method_config = {"dist": 0, "prob": 1, "prob2": 2}
-        tile_culling_dist_thresh = 0.1
+        tile_culling_dist_thresh = 0.5
         if tile_culling_method != "dist":
             tile_culling_dist_thresh = tile_culling_dist_thresh**2
 
@@ -214,17 +216,19 @@ class Splatter(nn.Module):
             self.tile_info.leftmost,
             self.tile_info.topmost,
         )
+
         tile_n_point = torch.min(
             tile_n_point, torch.ones_like(tile_n_point)*tile_max_point)
 
-        if tile_n_point.sum() == 0:
-            return torch.zeros(self.tile_info.padded_height, self.tile_info.padded_width, 3, device=self.device, dtype=torch.float32)
+        # if tile_n_point.sum() == 0:
+        #     return torch.zeros(self.tile_info.padded_height, self.tile_info.padded_width, 3, device=self.device, dtype=torch.float32)
 
         gathered_list = torch.empty(
             tile_n_point.sum(), dtype=torch.int32, device=self.device)
 
         tile_ids_for_points = torch.empty(
             tile_n_point.sum(), dtype=torch.int32, device=self.device)
+
         tile_n_point_accum = torch.cat([torch.Tensor([0]).to(
             self.device), torch.cumsum(tile_n_point, 0)]).to(tile_n_point)
         max_points_for_tile = tile_n_point.max().item()
@@ -237,27 +241,31 @@ class Splatter(nn.Module):
             tile_ids_for_points,
             int(max_points_for_tile),
         )
-        self.tile_gaussians = gaussians.filte(
+        tile_gaussians = gaussians.filte(
             gathered_list.long())
-        self.n_tile_gaussians = len(self.tile_gaussians.pos)
-        self.n_gaussians = len(gaussians.pos)
+        # n_tile_gaussians = len(tile_gaussians.pos)
+        # n_gaussians = len(gaussians.pos)
 
         # sort by tile id and depth
-        BASE = gaussians.pos[..., 2].max()
-        id_and_depth = gaussians.pos[..., 2].to(
+        BASE = tile_gaussians.pos[..., 2].max()
+        id_and_depth = tile_gaussians.pos[..., 2].to(
             torch.float32) + tile_ids_for_points.to(torch.float32) * (BASE+1)
         _, sort_indices = torch.sort(id_and_depth)
-        gaussians = gaussians.filte(sort_indices)
+        tile_gaussians = tile_gaussians.filte(sort_indices)
 
         # render tiles
         rays_o, lefttop, dx, dy = self.RayInfo(
             self.tile_info, w2c_r, w2c_t)
 
+        print("covariance: ", tile_gaussians.covariance.shape)
+        print("covariance: ", gaussians.covariance.shape)
+        print("normal: ", self.render_weight_normalize)
+
         rendered_image = draw(
-            self.tile_gaussians.pos,
-            self.tile_gaussians.rgb,
-            self.tile_gaussians.opa,
-            self.tile_gaussians.cov,
+            tile_gaussians.pos,
+            tile_gaussians.rgb,
+            tile_gaussians.opacity,
+            tile_gaussians.covariance,
             tile_n_point_accum,
             self.tile_info.padded_height,
             self.tile_info.padded_width,
@@ -270,7 +278,6 @@ class Splatter(nn.Module):
             rays_o,
             lefttop,
             dx,
-            dy,
             dy,
         )
         return rendered_image
@@ -301,7 +308,7 @@ if __name__ == "__main__":
 
     # splatter = Splatter(init_points=dataset.points3d,
     #                     downsample=1, use_sh_coeff=False)
-    splatter = Splatter(load_ckpt="ckpt.pth")
+    splatter = Splatter(load_ckpt="ckpt.pth", downsample=4)
     splatter.set_camera(dataset.camera)
     render_image = splatter.forward(dataset.image_info[0])
     # save image

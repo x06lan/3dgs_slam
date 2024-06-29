@@ -66,23 +66,24 @@ class Gaussians(nn.Module):
         return _cobj
 
     def filte(self, mask):
-        if self.quaternion is not None and self.scale is not None:
-            assert self.covariance is None
+
+        if self.covariance is not None:
             return Gaussians(
                 pos=self.pos[mask],
                 rgb=self.rgb[mask],
-                opa=self.opacity[mask],
-                quat=self.quaternion[mask],
+                opacty=self.opacity[mask],
+                covariance=self.covariance[mask],
+            )
+        elif self.quaternion is not None and self.scale is not None:
+            return Gaussians(
+                pos=self.pos[mask],
+                rgb=self.rgb[mask],
+                opacty=self.opacity[mask],
+                quaternion=self.quaternion[mask],
                 scale=self.scale[mask],
             )
         else:
-            assert self.covariance is not None
-            return Gaussians(
-                pos=self.pos[mask],
-                rgb=self.rgb[mask],
-                opa=self.opacity[mask],
-                cov=self.covariance[mask],
-            )
+            raise ValueError("No support filter")
 
     def to(self, *args, **kwargs):
         self.pos.to(*args, **kwargs)
