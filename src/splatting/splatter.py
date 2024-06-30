@@ -316,7 +316,7 @@ class Splatter(nn.Module):
 
 if __name__ == "__main__":
 
-    dataset = ColmapDataset("dataset/nerfstudio/poster")
+    dataset = ColmapDataset("dataset/nerfstudio/poster", downsample_factor=1)
     # dataset = ColmapDataset("dataset/nerfstudio/aspen")
 
     # splatter = Splatter(init_points=dataset.points3d,
@@ -324,5 +324,12 @@ if __name__ == "__main__":
     splatter = Splatter(load_ckpt="ckpt3.pth", downsample=1)
     splatter.set_camera(dataset.camera)
     render_image = splatter.forward(dataset.image_info[0])
+
     # save image
     Splatter.save_image("output.png", render_image)
+
+    # print(render_image.shape)
+    # print(dataset.images[0].shape)
+    ground_truth = dataset.images[0].to(splatter.device)
+    loss = (ground_truth - render_image).abs().mean()
+    loss.backward()

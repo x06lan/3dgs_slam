@@ -465,11 +465,11 @@ class ColmapDataset(Dataset):
         self.image_info: dict[int, ImageInfo] = read_images_binary(os.path.join(
             colmap_path, 'images.bin'))
 
-        self.downsample_factor: Union[0, 2, 3, 8] = downsample_factor
+        self.downsample_factor: Union[1, 2, 4, 8] = downsample_factor
 
         img_dir = os.path.join(
             path, 'images')
-        if self.downsample_factor != 0:
+        if self.downsample_factor != 1:
             img_dir = os.path.join(
                 path, f'images_{self.downsample_factor}')
 
