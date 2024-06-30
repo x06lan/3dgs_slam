@@ -5,7 +5,11 @@ import torch.nn as nn
 import gaussian_cuda
 import ipdb
 import cv2
+import time
+from tqdm import tqdm
 from typing import Union, Tuple
+from torchmetrics.functional import peak_signal_noise_ratio as psnr_func
+from torchmetrics import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
 
 from pykdtree.kdtree import KDTree
 
@@ -81,7 +85,7 @@ class Splatter(nn.Module):
 
                 rgb=ckpt["rgb"],
                 # rgb=torch.ones(
-                #     ckpt["pos"].shape[0], 3).to(torch.float32).to(self.device)*0.5,
+                #     ckpt["pos"].shape[0], 3).to(torch.float32).to(self.device)*0.1,
                 opacty=ckpt["opa"],
                 # opacty=torch.ones(
                 #     ckpt["pos"].shape[0]).to(torch.float32).to(self.device)*0.3,
@@ -166,6 +170,8 @@ class Splatter(nn.Module):
 
         # self.gaussians.normalize_quaternion(),
         # self.gaussians.normalize_scale(),
+        half_width = self.camera.width*magic_number/2/self.camera.fx
+        half_height = self.camera.height*magic_number/2/self.camera.fy
 
         # 2d position,2d covariance, mask
         _pos, _cov, mask = global_culling(
@@ -175,8 +181,8 @@ class Splatter(nn.Module):
             w2c_r.detach(),
             w2c_t.detach(),
             self.near,
-            self.camera.width*magic_number/2/self.camera.fx,
-            self.camera.height*magic_number/2/self.camera.fy,
+            half_width,
+            half_height
         )
         mask = mask.bool()
 
@@ -184,7 +190,6 @@ class Splatter(nn.Module):
 
         if not self.use_sh_coeff:
             _rgb = _rgb.sigmoid()
-
         culled_gaussians = Gaussians(
             pos=_pos[mask],
             covariance=_cov[mask],
@@ -316,20 +321,41 @@ class Splatter(nn.Module):
 
 if __name__ == "__main__":
 
-    dataset = ColmapDataset("dataset/nerfstudio/poster", downsample_factor=1)
+    frame = 0
+    downsample = 2
+    dataset = ColmapDataset("dataset/nerfstudio/poster",
+                            downsample_factor=downsample)
     # dataset = ColmapDataset("dataset/nerfstudio/aspen")
 
     # splatter = Splatter(init_points=dataset.points3d,
     #                     downsample=1, use_sh_coeff=False)
-    splatter = Splatter(load_ckpt="ckpt3.pth", downsample=1)
+    splatter = Splatter(load_ckpt="ckpt3.pth", downsample=downsample)
     splatter.set_camera(dataset.camera)
-    render_image = splatter.forward(dataset.image_info[0])
 
-    # save image
-    Splatter.save_image("output.png", render_image)
+    optimizer = torch.optim.Adam(splatter.gaussians.parameters(), lr=0.003)
+    ssim = StructuralSimilarityIndexMeasure(
+        reduction="elementwise_mean").to(splatter.device)
+    ssim_weight = 0.1
 
-    # print(render_image.shape)
-    # print(dataset.images[0].shape)
-    ground_truth = dataset.images[0].to(splatter.device)
-    loss = (ground_truth - render_image).abs().mean()
-    loss.backward()
+    for img_id in tqdm(range(0, 100)):
+        render_image = splatter.forward(dataset.image_info[frame])
+        # render_image = (render_image*255).dtype(np.uint8)
+
+        ground_truth = dataset.images[frame].to(splatter.device)
+        ground_truth = ground_truth.type_as(render_image)/255
+
+        l1_loss = (ground_truth - render_image).abs().mean()
+        ssim_loss = ssim(render_image.unsqueeze(0).permute(
+            0, 3, 1, 2), ground_truth.unsqueeze(0).permute(0, 3, 1, 2))
+
+        loss = l1_loss*(1.0-ssim_weight) + ssim_loss*ssim_weight
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        print(loss)
+        print(splatter.gaussians.rgb.grad.abs().mean())
+
+        # save image
+        Splatter.save_image("output.png", render_image)
+
+        # time.sleep(0.3)
