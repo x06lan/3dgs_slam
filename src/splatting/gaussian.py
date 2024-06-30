@@ -3,7 +3,9 @@ import torch
 import torch.nn as nn
 import gaussian_cuda
 import renderer
-from utils import utils
+from utils import function
+
+EPS = 1e-6
 
 
 class Gaussians(nn.Module):
@@ -45,7 +47,7 @@ class Gaussians(nn.Module):
     def normalize_scale(self):
         scale_activation = "abs"
         if scale_activation == "abs":
-            return self.scale.abs()+utils.EPS
+            return self.scale.abs()+EPS
         elif scale_activation == "exp":
             return renderer.trunc_exp(self.scale)
         else:
@@ -97,9 +99,9 @@ class Gaussians(nn.Module):
             self.covariance.to(*args, **kwargs)
 
     def get_gaussian_3d_cov(self, scale_activation="abs"):
-        R = utils.q2r(self.quaternion)
+        R = function.q2r(self.quaternion)
         if scale_activation == "abs":
-            _scale = self.scale.abs()+utils.EPS
+            _scale = self.scale.abs()+EPS
         elif scale_activation == "exp":
             _scale = renderer.turn_exp(self.scale)
         else:
@@ -113,5 +115,5 @@ class Gaussians(nn.Module):
         return RSSR
 
     def reset_opacity(self):
-        torch.nn.init.uniform_(self.opacity, a=utils.inverse_sigmoid(
-            0.01), b=utils.inverse_sigmoid(0.01))
+        torch.nn.init.uniform_(self.opacity, a=function.inverse_sigmoid(
+            0.01), b=function.inverse_sigmoid(0.01))

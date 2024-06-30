@@ -31,7 +31,7 @@ from typing import Union, Tuple
 
 
 from multiprocessing import Process, Queue, Value
-from utils.utils import read_cameras_binary, read_images_binary, read_points3d_binary
+from utils.function import read_cameras_binary, read_images_binary, read_points3d_binary
 from utils.image import ImageInfo
 
 

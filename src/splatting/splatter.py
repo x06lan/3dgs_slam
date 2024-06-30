@@ -10,7 +10,7 @@ from typing import Union, Tuple
 from pykdtree.kdtree import KDTree
 
 
-import utils.utils as utils
+import utils.function as function
 import gaussian_cuda
 from renderer import draw, global_culling
 from gaussian import Gaussians
@@ -48,7 +48,8 @@ class Splatter(nn.Module):
             _pos = []
             for pid, point in init_points.items():
                 _pos.append(torch.from_numpy(point.xyz))
-                _rgb.append(utils.inverse_sigmoid(torch.from_numpy(point.rgb)))
+                _rgb.append(function.inverse_sigmoid(
+                    torch.from_numpy(point.rgb)))
 
             rgb = torch.stack(_rgb).to(torch.float32).to(self.device)
             pos = torch.stack(_pos).to(torch.float32).to(self.device)
@@ -77,12 +78,22 @@ class Splatter(nn.Module):
             # ipdb.set_trace()
             self.gaussians = Gaussians(
                 pos=ckpt["pos"],
+
                 rgb=ckpt["rgb"],
+                # rgb=torch.ones(
+                #     ckpt["pos"].shape[0], 3).to(torch.float32).to(self.device)*0.5,
                 opacty=ckpt["opa"],
+                # opacty=torch.ones(
+                #     ckpt["pos"].shape[0]).to(torch.float32).to(self.device)*0.3,
                 quaternion=ckpt["quat"],  # B x 4
                 scale=ckpt["scale"],
                 init_value=True
             )
+            for key, value in ckpt.items():
+                print(key, value.shape)
+
+            # self.gaussians.rgb = torch.ones(
+            #     ckpt["pos"].shape[0], 3).to(torch.float32).to(self.device)*0.5
 
             # self.gaussians.pos = nn.Parameter(ckpt["pos"])
             # # self.gaussians.opacity = nn.Parameter(ckpt["opacity"])
@@ -107,7 +118,7 @@ class Splatter(nn.Module):
         w2c_q = img_info.qvec
         w2c_t = img_info.tvec.to(self.device)
 
-        w2c_r = utils.qvec2rot_matrix(w2c_q).squeeze().to(
+        w2c_r = function.qvec2rot_matrix(w2c_q).squeeze().to(
             torch.float32)
         return w2c_r.to(self.device), w2c_t.to(self.device)
 
@@ -115,17 +126,19 @@ class Splatter(nn.Module):
 
         # invert of world to camera
         # c2w = torch.inverse(world_camera.matrix()).to(tile_info.device)
-        c2w = torch.inverse(w2c_r).to(tile_info.device)
+        c2w = torch.inverse(w2c_r)
 
         rays_o = -c2w @ w2c_t
         W = tile_info.padded_width
         H = tile_info.padded_height
         focal_x = tile_info.focal_x
         focal_y = tile_info.focal_y
+
         lefttop_cam = torch.Tensor(
             [(-W/2 + 0.5)/focal_x,
              (-H/2 + 0.5)/focal_y,
              1.0]).to(tile_info.device)
+
         dx_cam = torch.Tensor([1.0 / focal_x, 0, 0]).to(w2c_r.device)
         dy_cam = torch.Tensor([0, 1.0/focal_y, 0]).to(w2c_r.device)
         lefttop = c2w @ (lefttop_cam - w2c_t)
@@ -162,34 +175,40 @@ class Splatter(nn.Module):
             w2c_r.detach(),
             w2c_t.detach(),
             self.near,
-            self.camera.width*magic_number/2.0/self.camera.fx,
-            self.camera.height*magic_number/2.0/self.camera.fy,
+            self.camera.width*magic_number/2/self.camera.fx,
+            self.camera.height*magic_number/2/self.camera.fy,
         )
         mask = mask.bool()
 
         _rgb = self.gaussians.rgb[mask]
-        if self.use_sh_coeff:
-            _rgb = _rgb[mask].sigmoid()
+
+        if not self.use_sh_coeff:
+            _rgb = _rgb.sigmoid()
 
         culled_gaussians = Gaussians(
             pos=_pos[mask],
             covariance=_cov[mask],
             rgb=_rgb,
-            opacty=self.gaussians.opacity[mask],
-            quaternion=self.gaussians.quaternion[mask],
-            scale=self.gaussians.scale[mask].sigmoid(),
+            opacty=self.gaussians.opacity[mask].sigmoid(),
+            # quaternion=self.gaussians.quaternion[mask],
+            # scale=self.gaussians.scale[mask].sigmoid(),
         )
 
         return culled_gaussians, mask
 
-    def render(self, gaussians: Gaussians,  w2c_r: torch.tensor, w2c_t: torch.tensor):
-        if len(gaussians.pos) == 0:
-            return torch.zeros(self.tile_info.padded_height, self.tile_info.padded_width, 3, device=self.device, dtype=torch.float32)
+    def render(self, culling_gaussians: Gaussians,  w2c_r: torch.tensor, w2c_t: torch.tensor):
+        # if len(gaussians.pos) == 0:
+        #     return torch.zeros(self.tile_info.padded_height, self.tile_info.padded_width, 3, device=self.device, dtype=torch.float32)
+
+        # print("pos", culling_gaussians.pos.shape)
+
+        # print("rgb", culling_gaussians.rgb.shape)
+        # print(culling_gaussians.rgb)
 
         tile_n_point = torch.zeros(
             len(self.tile_info), device=self.device, dtype=torch.int32)
         # MAXP = len(self.culling_gaussian_3d_image_space.pos)//10
-        tile_max_point = len(gaussians.pos)//20
+        tile_max_point = len(culling_gaussians.pos)//20
 
         tile_gaussian_list = torch.ones(
             len(self.tile_info), tile_max_point, device=self.device, dtype=torch.int32) * -1
@@ -202,7 +221,7 @@ class Splatter(nn.Module):
 
         # culling tiles
         gaussian_cuda.calc_tile_list(
-            gaussians.to_cpp(),
+            culling_gaussians.to_cpp(),
             self.tile_info_cpp,
             tile_n_point,
             tile_gaussian_list,
@@ -241,10 +260,8 @@ class Splatter(nn.Module):
             tile_ids_for_points,
             int(max_points_for_tile),
         )
-        tile_gaussians = gaussians.filte(
+        tile_gaussians = culling_gaussians.filte(
             gathered_list.long())
-        # n_tile_gaussians = len(tile_gaussians.pos)
-        # n_gaussians = len(gaussians.pos)
 
         # sort by tile id and depth
         BASE = tile_gaussians.pos[..., 2].max()
@@ -256,10 +273,6 @@ class Splatter(nn.Module):
         # render tiles
         rays_o, lefttop, dx, dy = self.RayInfo(
             self.tile_info, w2c_r, w2c_t)
-
-        print("covariance: ", tile_gaussians.covariance.shape)
-        print("covariance: ", gaussians.covariance.shape)
-        print("normal: ", self.render_weight_normalize)
 
         rendered_image = draw(
             tile_gaussians.pos,
@@ -280,18 +293,20 @@ class Splatter(nn.Module):
             dx,
             dy,
         )
+
         return rendered_image
 
     def save_image(path, image):
         img_npy = image.clip(0, 1).detach().cpu().numpy()
+
         cv2.imwrite(
             path, (img_npy*255).astype(np.uint8)[..., ::-1])
 
     def forward(self,  imageInfo: ImageInfo):
         w2c_r, w2c_t = self.w2c(imageInfo)
 
-        gaussians, mask = self.project_culling(w2c_r, w2c_t)
-        padded_rendered_image = self.render(gaussians, w2c_r, w2c_t)
+        culling_gaussians, mask = self.project_culling(w2c_r, w2c_t)
+        padded_rendered_image = self.render(culling_gaussians, w2c_r, w2c_t)
 
         padded_render_image = torch.clamp(padded_rendered_image, 0, 1)
         render_image = self.tile_info.crop(padded_render_image)
@@ -301,14 +316,12 @@ class Splatter(nn.Module):
 
 if __name__ == "__main__":
 
-    dataset = ColmapDataset("dataset/nerfstudio/aspen/")
-    # print(dataset.camera)
-    # print(dataset.images[0])
-    # print(dataset.image_info[0])
+    dataset = ColmapDataset("dataset/nerfstudio/poster")
+    # dataset = ColmapDataset("dataset/nerfstudio/aspen")
 
     # splatter = Splatter(init_points=dataset.points3d,
     #                     downsample=1, use_sh_coeff=False)
-    splatter = Splatter(load_ckpt="ckpt.pth", downsample=4)
+    splatter = Splatter(load_ckpt="ckpt3.pth", downsample=1)
     splatter.set_camera(dataset.camera)
     render_image = splatter.forward(dataset.image_info[0])
     # save image

@@ -35,8 +35,6 @@ from utils.camera import Camera
 from utils.image import ImageInfo
 from utils.point import Point3D
 
-EPS = 1e-6
-
 
 @dataclass(frozen=True)
 class CameraModel:
@@ -98,7 +96,7 @@ def read_cameras_binary(path_to_model_file: Union[str, Path]) -> Dict[int, Camer
                 fid, num_bytes=8 * num_params, format_char_sequence="d" * num_params
             )
             cameras[camera_id] = Camera(width=width, height=height, fx=params[0],
-                                        fy=params[1], cx=params[2], cy=params[3], distortParams=params[4:], fps=0)
+                                        fy=params[1], cx=params[2], cy=params[3], distortParams=params[4:], fps=30)
             # cameras[camera_id] = Camera(
             #     id=camera_id,
             #     model=model_name,
