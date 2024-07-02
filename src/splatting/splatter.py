@@ -352,8 +352,9 @@ if __name__ == "__main__":
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        print(loss)
-        print(splatter.gaussians.rgb.grad.abs().mean())
+
+        # print(loss)
+        # print(splatter.gaussians.rgb.grad.abs().mean())
 
         # save image
         Splatter.save_image("output.png", render_image)

@@ -47,6 +47,7 @@ RUN pip3 install torch torchvision torchaudio --index-url https://download.pytor
 
 COPY ./requirements.txt ./requirements.txt
 RUN pip3 install -r requirements.txt 
+RUN pip3 install torchmetrics einops
 
 # RUN sudo ln -snf /usr/share/zoneinfo/$TZ /etc/localtime
 

@@ -38,7 +38,7 @@ yourdfpy==0.0.56
 # torchgeometry
 ipdb
 pykdtree
-torchmetrics
+# torchmetrics
 
 
 
