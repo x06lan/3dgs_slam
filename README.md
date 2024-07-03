@@ -21,7 +21,6 @@ python3 src/gaussian_cuda/setup.py install
 export PYTHONPATH="${PYTHONPATH}:/app/src"
 python3 src/splatting/splatter.py
 ```
-
 test depth estimator
 1. create dataset/data dir and dataset/result dir
 2. put ur demo images in dataset/data
@@ -32,4 +31,10 @@ test depth estimator
 docker build  -t 3dgs_slam:0.1.0 .
 docker run -it --rm -e  "DISPLAY=$DISPLAY" -v /tmp/.X11-unix:/tmp/.X11-unix -v ./:/app --privileged --gpus all 3dgs_slam:0.1.0 bash
 python3 src/depth_estimator/run.py
+```
+docker compose
+
+```bash
+docker-compose up -d
+docker exec -it 3dgs_slam bash    
 ```
