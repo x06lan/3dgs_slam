@@ -31,7 +31,7 @@ from typing import Union, Tuple
 
 
 from multiprocessing import Process, Queue, Value
-from utils.utils import read_cameras_binary, read_images_binary, read_points3d_binary
+from utils.function import read_cameras_binary, read_images_binary, read_points3d_binary
 from utils.image import ImageInfo
 
 
@@ -458,20 +458,22 @@ class ColmapDataset(Dataset):
             os.path.join(colmap_path, 'cameras.bin'))
         # take first one
         self.camera = list(self.camera.values())[0]
+        self.points3d = read_points3d_binary(
+            os.path.join(colmap_path, 'points3D.bin'))
 
         # somehow image id not start from 0 os use dict
         self.image_info: dict[int, ImageInfo] = read_images_binary(os.path.join(
             colmap_path, 'images.bin'))
 
-        self.downsample_factor: Union[0, 2, 3, 8] = downsample_factor
+        self.downsample_factor: Union[1, 2, 4, 8] = downsample_factor
 
         img_dir = os.path.join(
             path, 'images')
-        if self.downsample_factor != 0:
+        if self.downsample_factor != 1:
             img_dir = os.path.join(
                 path, f'images_{self.downsample_factor}')
-        self.image = []
 
+        self.images = []
         img_ids = sorted([im.id for im in self.image_info.values()])
 
         print('Loading images...')
@@ -479,7 +481,7 @@ class ColmapDataset(Dataset):
             img_filename = self.image_info[img_id].name
             img_path = os.path.join(img_dir, img_filename)
             img = loadImage(img_path)
-            self.image.append(img)
+            self.images.append(img)
 
         self.image_info: list[ImageInfo] = [
             self.image_info[img_id] for img_id in img_ids]

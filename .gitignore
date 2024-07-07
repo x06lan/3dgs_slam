@@ -161,9 +161,14 @@ cython_debug/
 
 # dataset
 dataset
+bin
 
 # depth anything checkpoint
 src/depth_estimator/depth_anything/checkpoints/*
 !src/depth_estimator/depth_anything/checkpoints/.gitkeep
 
+
+output.png
+# save model
+*.pth
 /bin

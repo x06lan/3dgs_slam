@@ -1,14 +1,15 @@
 
 import torch
-from typing import Dict, Union
+import numpy as np
 from dataclasses import dataclass
+from typing import Dict, Union
 
 
 @dataclass(frozen=True)
 class Point3D:
     id: int
-    xyz: torch.tensor
-    rgb: torch.tensor
-    error: Union[float, torch.tensor]
-    image_ids: torch.tensor
-    point2D_idxs: torch.tensor
+    xyz: np.ndarray
+    rgb: np.ndarray
+    error: Union[float, np.ndarray]
+    image_ids: np.ndarray
+    point2D_idxs: np.ndarray

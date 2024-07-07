@@ -100,7 +100,7 @@ class Camera:
         uv_bounds = np.ndarray([[self.u_min, self.v_min],
                                 [self.u_min, self.v_max],
                                 [self.u_max, self.v_min],
-                                [self.u_max, self.v_max]], dtype=torhc.float32).reshape(4, 2)
+                                [self.u_max, self.v_max]], dtype=torch.float32).reshape(4, 2)
         # print('uv_bounds: ', uv_bounds)
         if self.is_distorted:
             uv_bounds_undistorted = cv2.undistortPoints(

@@ -10,10 +10,6 @@ import multiprocessing
 
 from utils.camera import Camera
 from parser.dataset import ColmapDataset
-from tracker.visual_odometry import VisualOdometry
-from tracker.feature_tracker_configs import FeatureTrackerConfigs
-from tracker.feature_tracker import feature_tracker_factory, FeatureTrackerTypes
-from viewer.mplot_thread import Mplot2d, Mplot3d
 from viewer.server import Viewer, ViewerData
 
 
@@ -38,15 +34,15 @@ class Tracker():
         self.img_id = 0
 
     def create_vo(self):
-        num_features = 1000  # how many features do you want to detect and track?
-        tracker_config = FeatureTrackerConfigs.LK_FAST
-        tracker_config["num_features"] = num_features
-        feature_tracker = feature_tracker_factory(**tracker_config)
+        # num_features = 1000  # how many features do you want to detect and track?
+        # tracker_config = FeatureTrackerConfigs.LK_FAST
+        # tracker_config["num_features"] = num_features
+        # feature_tracker = feature_tracker_factory(**tracker_config)
         width = self.shareData.width
         height = self.shareData.height
         self.camera = Camera(width=width, height=height, cx=width/2,
                              cy=height/2, fx=width/2, fy=height/2, distortParams=[0, 0, 0, 0, 0], fps=30)
-        self.vo = VisualOdometry(self.camera, feature_tracker, None)
+        # self.vo = VisualOdometry(self.camera, feature_tracker, None)
 
     def run(self):
 
