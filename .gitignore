@@ -167,11 +167,8 @@ bin
 src/depth_estimator/depth_anything/checkpoints/*
 !src/depth_estimator/depth_anything/checkpoints/.gitkeep
 
-<<<<<<< HEAD
 
 output.png
 # save model
 *.pth
-=======
 /bin
->>>>>>> origin/main
