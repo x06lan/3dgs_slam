@@ -339,6 +339,10 @@ if __name__ == "__main__":
 
     for img_id in tqdm(range(0, 100)):
         render_image = splatter.forward(dataset.image_info[frame])
+
+        # drop alpha channel
+        render_image = render_image[..., :3]
+
         # render_image = (render_image*255).dtype(np.uint8)
 
         ground_truth = dataset.images[frame].to(splatter.device)

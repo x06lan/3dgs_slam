@@ -537,8 +537,8 @@ __global__ void draw_backward_kernel(
     uint32_t global_idx;
     
     //output gradient
-    output += (id_x + id_y * w) * 3;
-    grad_output += (id_x + id_y * w) * 3;
+    output += (id_x + id_y * w) * 4;
+    grad_output += (id_x + id_y * w) * 4;
     float cur_grad_out[3];
     float cur_out[3];
     #pragma unroll
@@ -964,9 +964,10 @@ __global__ void draw_kernel(
     if(accum_weight < 0.01 || !weight_normalize){
         accum_weight = 1;
     }
-    res[(id_x + id_y * w)*3 + 0] = color[0] / accum_weight;
-    res[(id_x + id_y * w)*3 + 1] = color[1] / accum_weight;
-    res[(id_x + id_y * w)*3 + 2] = color[2] / accum_weight;
+    res[(id_x + id_y * w)*4 + 0] = color[0] / accum_weight;
+    res[(id_x + id_y * w)*4 + 1] = color[1] / accum_weight;
+    res[(id_x + id_y * w)*4 + 2] = color[2] / accum_weight;
+    res[(id_x + id_y * w)*4 + 3] = alpha;
 }
 
 // void draw(Gaussian3ds & tile_sorted_gaussians, torch::Tensor tile_n_point_accum, torch::Tensor res, float focal_x, float focal_y){

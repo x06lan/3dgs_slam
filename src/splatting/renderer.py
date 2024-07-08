@@ -28,7 +28,7 @@ class _Drawer(torch.autograd.Function):
         vec_dy=None
     ):
         rendered_image = torch.zeros(
-            padded_height, padded_width, 3, device=gaussians_pos.device, dtype=torch.float32)
+            padded_height, padded_width, 4, device=gaussians_pos.device, dtype=torch.float32)
         gaussian_cuda.draw(
             gaussians_pos,
             gaussians_rgb,
