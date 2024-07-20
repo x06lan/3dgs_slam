@@ -24,15 +24,16 @@ from utils.image import ImageInfo
 from utils.camera import Camera
 from utils.point import Point3D
 
+import ipdb
+
 
 class Splatter(nn.Module):
-    def __init__(self, init_points: Union[Point3D, None] = None,  load_ckpt: Union[str, None] = None, downsample=1, use_sh_coeff=False, debug=False):
+    def __init__(self, init_points: Union[Point3D, dict, None] = None,  load_ckpt: Union[str, None] = None, downsample=1, use_sh_coeff=False, depthSpatting=False):
 
         super().__init__()
 
         self.device = torch.device("cuda")
         self.downsample: int = downsample
-        self.debug: bool = debug
         self.near: float = 0.3
         self.default_color = torch.tensor([0.0, 0.0, 0.0], device=self.device)
         self.init_scale = 0.1
@@ -47,34 +48,69 @@ class Splatter(nn.Module):
 
         # TODO : corrent this initialization
 
-        if (init_points is not None):
-            _rgb = []
-            _pos = []
-            for pid, point in init_points.items():
-                _pos.append(torch.from_numpy(point.xyz))
-                _rgb.append(function.inverse_sigmoid(
-                    torch.from_numpy(point.rgb)))
+        if (init_points):
+            if (isinstance(init_points, Point3D)):
+                _rgb = []
+                _pos = []
+                for pid, point in init_points.items():
+                    _pos.append(torch.from_numpy(point.xyz))
+                    _rgb.append(function.inverse_sigmoid(
+                        torch.from_numpy(point.rgb)))
 
-            rgb = torch.stack(_rgb).to(torch.float32).to(self.device)
-            pos = torch.stack(_pos).to(torch.float32).to(self.device)
+                rgb = torch.stack(_rgb).to(torch.float32).to(self.device)
+                pos = torch.stack(_pos).to(torch.float32).to(self.device)
 
-            _pos_np = pos.cpu().numpy()
-            kd_tree = KDTree(_pos_np)
-            dist, idx = kd_tree.query(_pos_np, k=4)
-            mean_min_three_dis = dist[:, 1:].mean(axis=1)
-            mean_min_three_dis = torch.Tensor(mean_min_three_dis).to(
-                torch.float32) * self.init_scale
+                _pos_np = pos.cpu().numpy()
+                kd_tree = KDTree(_pos_np)
+                dist, idx = kd_tree.query(_pos_np, k=4)
+                mean_min_three_dis = dist[:, 1:].mean(axis=1)
+                mean_min_three_dis = torch.Tensor(mean_min_three_dis).to(
+                    torch.float32) * self.init_scale
 
-            self.gaussians = Gaussians(
-                pos=pos,
-                rgb=rgb,
-                opacty=torch.ones(len(init_points)).to(self.device),
-                quaternion=torch.Tensor([1, 0, 0, 0]).unsqueeze(dim=0).repeat(
-                    len(init_points), 1).to(torch.float32).to(self.device),  # B x 4
-                scale=torch.ones(len(init_points), 3).to(torch.float32).to(
-                    self.device)*mean_min_three_dis.unsqueeze(dim=1).to(self.device),
-                init_value=True
-            )
+                self.gaussians = Gaussians(
+                    pos=pos,
+                    rgb=rgb,
+                    opacty=torch.ones(len(init_points)).to(self.device),
+                    quaternion=torch.Tensor([1, 0, 0, 0]).unsqueeze(dim=0).repeat(
+                        len(init_points), 1).to(torch.float32).to(self.device),  # B x 4
+                    scale=torch.ones(len(init_points), 3).to(torch.float32).to(
+                        self.device)*mean_min_three_dis.unsqueeze(dim=1).to(self.device),
+                    init_value=True
+                )
+            elif (isinstance(init_points, dict)):
+                n = init_points["pos"].shape[0]
+                # assert init_points.shape[1] == 3
+                # ckpt = torch.load("ckpt3.pth")
+                # n = ckpt["pos"].shape[0]
+                # init_points = ckpt
+                # n = min(n, 1000)
+                # for i in ckpt.keys():
+                #     ckpt[i] = ckpt[i][:n]
+
+                rgb = torch.ones(n, 3).to(torch.float32).to(self.device)*0.1
+                quat = torch.Tensor([1, 0, 0, 0]).unsqueeze(dim=0).repeat(
+                    n, 1).to(torch.float32).to(self.device)
+
+                opacty = torch.ones(n).to(self.device)*self.init_opacity
+                scale = torch.ones(n, 3).to(
+                    torch.float32).to(self.device)
+                # scale *= 0.001
+                scale *= 0.008
+                # scale *= 0.05
+                # scale *= 0.1
+
+                self.gaussians = Gaussians(
+                    pos=init_points["pos"].to(self.device),
+                    rgb=init_points["rgb"].to(self.device),
+                    # rgb=rgb,
+                    opacty=opacty,
+                    quaternion=quat,  # B x 4
+                    scale=scale,
+                    # scale=torch.ones(n, 3).to(torch.float32).to(
+                    #     self.device)*10.0,
+                    init_value=True
+                )
+
         elif load_ckpt is not None:
             # load checkpoint
 
@@ -185,6 +221,7 @@ class Splatter(nn.Module):
             half_height
         )
         mask = mask.bool()
+        # ipdb.set_trace()
 
         _rgb = self.gaussians.rgb[mask]
 
@@ -213,7 +250,7 @@ class Splatter(nn.Module):
         tile_n_point = torch.zeros(
             len(self.tile_info), device=self.device, dtype=torch.int32)
         # MAXP = len(self.culling_gaussian_3d_image_space.pos)//10
-        tile_max_point = len(culling_gaussians.pos)//20
+        tile_max_point = max(culling_gaussians.pos.shape[0]//20, 5)
 
         tile_gaussian_list = torch.ones(
             len(self.tile_info), tile_max_point, device=self.device, dtype=torch.int32) * -1
@@ -308,6 +345,7 @@ class Splatter(nn.Module):
             path, (img_npy*255).astype(np.uint8)[..., ::-1])
 
     def forward(self,  imageInfo: ImageInfo):
+        # w2c_r, w2c_t = imageInfo.w2c()
         w2c_r, w2c_t = self.w2c(imageInfo)
 
         culling_gaussians, mask = self.project_culling(w2c_r, w2c_t)
