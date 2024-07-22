@@ -51,11 +51,11 @@ def screen_space_to_world_coords(intrinsic, extrinsics, image_coord, depth):
 
     screen_space *= torch.tensor([1080.0, 1920.0]).to(torch.float32)
 
-    screen_space[:, 0] = (screen_space[:, 0] - 1080/2)
-    screen_space[:, 1] = (screen_space[:, 1] - 1920/2)
+    screen_space[:, 0] = (screen_space[:, 0] - 1080.0/2.0)
+    screen_space[:, 1] = (screen_space[:, 1] - 1920.0/2.0)
 
-    screen_space[:, 0] = screen_space[:, 0] / intrinsic[0, 0]
-    screen_space[:, 1] = screen_space[:, 1] / intrinsic[1, 1]
+    screen_space[:, 0] = screen_space[:, 0] / intrinsic[0, 0]*1.07
+    screen_space[:, 1] = screen_space[:, 1] / intrinsic[1, 1]*0.65
 
     screen_space = torch.cat((screen_space, torch.ones(
         (batch, 1)).to(torch.float32)), dim=1)  # Shape: (N, 4)
@@ -70,83 +70,15 @@ def screen_space_to_world_coords(intrinsic, extrinsics, image_coord, depth):
     return world
 
 
-# def forward(intrinsic, extrinsics, world_space, camera):
-
-#     batch = world_space.shape[0]
-
-#     ones = torch.ones((batch, 1)).to(torch.float32)
-
-#     # screen_space = torch.cat((screen_space, ones), dim=1)
-
-#     world_space = world_space.to(torch.float32)
-
-#     K = (intrinsic).to(torch.float32)
-#     E = (extrinsics).to(torch.float32)
-#     R = (extrinsics[:3, :3]).to(torch.float32)
-#     t = extrinsics[:3, 3].unsqueeze(0)
-
-#     camera_space = torch.einsum(
-#         'ij,bj->bi', R, world_space)  # Shape: (N, 3)
-#     camera_space = camera_space + t
-
-#     image_space = torch.zeros_like(camera_space)
-#     image_space[:, 0] = camera_space[:, 0] / camera_space[:, 2]
-#     image_space[:, 1] = camera_space[:, 1] / camera_space[:, 2]
-#     image_space[:, 2] = torch.sqrt(
-#         camera_space[:, 0]**2 + camera_space[:, 1]**2 + camera_space[:, 2]**2)
-
-#     magic_number = 1.2
-
-#     image_space[:, 0] *= camera.fx
-#     image_space[:, 1] *= camera.fy
-
-#     image_space[:, 0] += camera.width/2
-#     image_space[:, 1] += camera.height/2
-
-#     return image_space
-
-
-def forward(intrinsic, extrinsics, world_space, camera):
-
-    batch = world_space.shape[0]
-
-    ones = torch.ones((batch, 1)).to(torch.float32)
-
-    # screen_space = torch.cat((screen_space, ones), dim=1)
-
-    world_space = world_space.to(torch.float32)
-
-    K = (intrinsic).to(torch.float32)
-    E = (extrinsics).to(torch.float32)
-    R = (extrinsics[:3, :3]).to(torch.float32)
-    t = extrinsics[:3, 3].unsqueeze(0)
-
-    camera_space = torch.einsum(
-        'ij,bj->bi', R, world_space)  # Shape: (N, 3)
-    camera_space = camera_space + t
-
-    image_space = torch.einsum(
-        'ij,bj->bi', K, camera_space)  # Shape: (N, 3)
-
-    # magic_number = 1.2
-
-    image_space[:, 0] = image_space[:, 0]*camera.fx/image_space[:, 2]
-    image_space[:, 1] = image_space[:, 1]*camera.fy/image_space[:, 2]
-
-    image_space[:, 0] += camera.cx
-    image_space[:, 1] += camera.cy
-
-    image_space[:, 0] /= camera.width
-    image_space[:, 1] /= camera.height
-
-    return image_space
-
-
 if __name__ == "__main__":
     frame = 0
     downsample = 1
     # device = "cuda"
     dataset = ColmapDataset("dataset/nerfstudio/poster",
+                            # dataset = ColmapDataset("dataset/nerfstudio/stump",
+                            # dataset = ColmapDataset("dataset/nerfstudio/aspen",
+                            # dataset = ColmapDataset("dataset/nerfstudio/redwoods2",
+                            # dataset = ColmapDataset("dataset/nerfstudio/person",
                             downsample_factor=downsample)
 
     estimator = Estimator()
@@ -161,19 +93,15 @@ if __name__ == "__main__":
     down_w, down_h = int(dataset.camera.width /
                          distance), int(dataset.camera.height/distance)
 
-    # ipdb.set_trace()
     x = (torch.arange(down_w)*distance+0.5*distance).repeat(down_h, 1)
     y = (torch.arange(down_h)*distance+0.5*distance).repeat(down_w, 1).t()
-
-    # x = (torch.arange(down_w)).repeat(down_h, 1)
-    # y = (torch.arange(down_h)).repeat(down_w, 1).t()
 
     coords = torch.stack((x, y), dim=2).to(torch.float32)
     coords = coords.reshape(-1, 2)
     print("coords", coords)
 
-    # for img_id in tqdm(range(0, len(dataset.image_info))):
-    for img_id in tqdm(range(0, 1)):
+    for img_id in tqdm(range(0, len(dataset.image_info))):
+        # for img_id in tqdm(range(0, 1)):
         frame = img_id
 
         ground_truth = dataset.images[frame]
@@ -185,7 +113,8 @@ if __name__ == "__main__":
         E = dataset.image_info[frame].extrinsic().to(torch.float32)
         R = E[:3, :3]
         t = E[:3, 3]
-        trans = dataset.image_info[frame]
+        # trans = dataset.image_info[frame]
+        trans = dataset.image_info[1]
 
         depth = estimator.estimate(raw_image).cpu()
 
@@ -193,18 +122,20 @@ if __name__ == "__main__":
         # depth = torch.ones((h, w, 1))
         # depth = torch.zeros((h, w, 1))
         depth = resize_image(depth, down_w, down_h)
-        # depth = (depth-depth.min())/(depth.max()-depth.min())
 
         depth = depth.reshape(-1, 1)
-        depth *= 0.1
 
-        depth = 1/(depth+0.01)
+        depth *= 0.09
+        # depth = (depth-depth.min())/(depth.max()-depth.min())
+        depth = 1.0/(depth+0.001)
+        depth *= 3.0
 
         # print("detph", depth)
 
         point = dict()
 
         pos_2d = coords
+
         pos = screen_space_to_world_coords(K, E, pos_2d, depth)
         rgb = resize_image(ground_truth, down_w, down_h).reshape(-1, 3)
 
@@ -230,4 +161,4 @@ if __name__ == "__main__":
 
         Splatter.save_image("output.png", render_image)
 
-        time.sleep(0.1)
+        time.sleep(0.2)

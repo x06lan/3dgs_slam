@@ -9,7 +9,7 @@ import time
 from tqdm import tqdm
 from typing import Union, Tuple
 from torchmetrics.functional import peak_signal_noise_ratio as psnr_func
-from torchmetrics import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
+from torchmetrics.image import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
 
 from pykdtree.kdtree import KDTree
 
@@ -36,7 +36,7 @@ class Splatter(nn.Module):
         self.downsample: int = downsample
         self.near: float = 0.3
         self.default_color = torch.tensor([0.0, 0.0, 0.0], device=self.device)
-        self.init_scale = 0.1
+        self.init_scale = 0.008
         self.init_opacity = 0.8
         self.camera: Camera = None
         # self.w2c_r = None
@@ -48,6 +48,7 @@ class Splatter(nn.Module):
 
         # TODO : corrent this initialization
 
+        init_gaussian = dict()
         if (init_points):
             if (isinstance(init_points, Point3D)):
                 _rgb = []
@@ -60,6 +61,8 @@ class Splatter(nn.Module):
                 rgb = torch.stack(_rgb).to(torch.float32).to(self.device)
                 pos = torch.stack(_pos).to(torch.float32).to(self.device)
 
+                n = pos.shape[0]
+
                 _pos_np = pos.cpu().numpy()
                 kd_tree = KDTree(_pos_np)
                 dist, idx = kd_tree.query(_pos_np, k=4)
@@ -67,81 +70,46 @@ class Splatter(nn.Module):
                 mean_min_three_dis = torch.Tensor(mean_min_three_dis).to(
                     torch.float32) * self.init_scale
 
-                self.gaussians = Gaussians(
-                    pos=pos,
-                    rgb=rgb,
-                    opacty=torch.ones(len(init_points)).to(self.device),
-                    quaternion=torch.Tensor([1, 0, 0, 0]).unsqueeze(dim=0).repeat(
-                        len(init_points), 1).to(torch.float32).to(self.device),  # B x 4
-                    scale=torch.ones(len(init_points), 3).to(torch.float32).to(
-                        self.device)*mean_min_three_dis.unsqueeze(dim=1).to(self.device),
-                    init_value=True
-                )
+                init_gaussian["pos"] = pos
+                init_gaussian["rgb"] = rgb
+                init_gaussian["opa"] = torch.ones(n)
+                init_gaussian["quat"] = torch.Tensor(
+                    [1, 0, 0, 0]).unsqueeze(dim=0).repeat(n, 1)
+                init_gaussian["scale"] = torch.ones(
+                    n, 3)*mean_min_three_dis.unsqueeze(dim=1)
+
             elif (isinstance(init_points, dict)):
+
                 n = init_points["pos"].shape[0]
-                # assert init_points.shape[1] == 3
-                # ckpt = torch.load("ckpt3.pth")
-                # n = ckpt["pos"].shape[0]
-                # init_points = ckpt
-                # n = min(n, 1000)
-                # for i in ckpt.keys():
-                #     ckpt[i] = ckpt[i][:n]
 
-                rgb = torch.ones(n, 3).to(torch.float32).to(self.device)*0.1
-                quat = torch.Tensor([1, 0, 0, 0]).unsqueeze(dim=0).repeat(
-                    n, 1).to(torch.float32).to(self.device)
+                init_gaussian = init_points
 
-                opacty = torch.ones(n).to(self.device)*self.init_opacity
-                scale = torch.ones(n, 3).to(
-                    torch.float32).to(self.device)
-                # scale *= 0.001
-                scale *= 0.008
-                # scale *= 0.05
-                # scale *= 0.1
+                if "rgb" not in init_gaussian:
+                    init_gaussian["rgb"] = torch.ones(n, 3)*0.1
 
-                self.gaussians = Gaussians(
-                    pos=init_points["pos"].to(self.device),
-                    rgb=init_points["rgb"].to(self.device),
-                    # rgb=rgb,
-                    opacty=opacty,
-                    quaternion=quat,  # B x 4
-                    scale=scale,
-                    # scale=torch.ones(n, 3).to(torch.float32).to(
-                    #     self.device)*10.0,
-                    init_value=True
-                )
+                if "scale" not in init_gaussian:
+                    init_gaussian["scale"] = torch.ones(n, 3)*self.init_scale
+
+                if "opa" not in init_gaussian:
+                    init_gaussian["opa"] = torch.ones(n)*self.init_opacity
+
+                if "quat" not in init_gaussian:
+                    init_gaussian["quat"] = torch.Tensor(
+                        [1, 0, 0, 0]).unsqueeze(dim=0).repeat(n, 1)
 
         elif load_ckpt is not None:
             # load checkpoint
+            init_gaussian = torch.load(load_ckpt)
 
-            ckpt = torch.load(load_ckpt)
-            # ipdb.set_trace()
-            self.gaussians = Gaussians(
-                pos=ckpt["pos"],
-
-                rgb=ckpt["rgb"],
-                # rgb=torch.ones(
-                #     ckpt["pos"].shape[0], 3).to(torch.float32).to(self.device)*0.1,
-                opacty=ckpt["opa"],
-                # opacty=torch.ones(
-                #     ckpt["pos"].shape[0]).to(torch.float32).to(self.device)*0.3,
-                quaternion=ckpt["quat"],  # B x 4
-                scale=ckpt["scale"],
-                init_value=True
-            )
-            for key, value in ckpt.items():
-                print(key, value.shape)
-
-            # self.gaussians.rgb = torch.ones(
-            #     ckpt["pos"].shape[0], 3).to(torch.float32).to(self.device)*0.5
-
-            # self.gaussians.pos = nn.Parameter(ckpt["pos"])
-            # # self.gaussians.opacity = nn.Parameter(ckpt["opacity"])
-            # self.gaussians.opacity = nn.Parameter(ckpt["opa"])
-            # self.gaussians.rgb = nn.Parameter(ckpt["rgb"])
-            # # self.gaussians.quaternion = nn.Parameter(ckpt["quaternion"])
-            # self.gaussians.quaternion = nn.Parameter(ckpt["quat"])
-            # self.gaussians.scale = nn.Parameter(ckpt["scale"])
+        self.gaussians = Gaussians(
+            pos=init_gaussian["pos"].to(torch.float32).to(self.device),
+            rgb=init_gaussian["rgb"].to(torch.float32).to(self.device),
+            opacty=init_gaussian["opa"].to(torch.float32).to(self.device),
+            quaternion=init_gaussian["quat"].to(
+                torch.float32).to(self.device),  # B x 4
+            scale=init_gaussian["scale"].to(torch.float32).to(self.device),
+            init_value=True
+        )
 
     def save_ckpt(self, path):
         ckpt = {
@@ -220,8 +188,8 @@ class Splatter(nn.Module):
             half_width,
             half_height
         )
+
         mask = mask.bool()
-        # ipdb.set_trace()
 
         _rgb = self.gaussians.rgb[mask]
 

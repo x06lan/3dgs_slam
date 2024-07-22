@@ -27,12 +27,6 @@ class Gaussians(nn.Module):
             self.covariance = covariance if covariance is None else nn.parameter.Parameter(
                 covariance)
         else:
-            # self.pos = nn.parameter.Parameter(pos)
-            # self.rgb = nn.parameter.Parameter(rgb)
-            # self.opacity = nn.parameter.Parameter(opacty)
-            # self.scale = nn.parameter.Parameter(scale)
-            # self.quaternion = nn.parameter.Parameter(quaternion)
-            # self.covariance = nn.parameter.Parameter(covariance)
 
             self.pos = pos
             self.rgb = rgb
