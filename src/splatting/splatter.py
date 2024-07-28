@@ -49,7 +49,7 @@ class Splatter(nn.Module):
         # TODO : corrent this initialization
 
         init_gaussian = dict()
-        if (init_points):
+        if (init_points is not None):
             if (isinstance(init_points, Point3D)):
                 _rgb = []
                 _pos = []
@@ -102,13 +102,13 @@ class Splatter(nn.Module):
             init_gaussian = torch.load(load_ckpt)
 
         self.gaussians = Gaussians(
-            pos=init_gaussian["pos"].to(torch.float32).to(self.device),
-            rgb=init_gaussian["rgb"].to(torch.float32).to(self.device),
-            opacty=init_gaussian["opa"].to(torch.float32).to(self.device),
-            quaternion=init_gaussian["quat"].to(
-                torch.float32).to(self.device),  # B x 4
-            scale=init_gaussian["scale"].to(torch.float32).to(self.device),
-            init_value=True
+            pos=init_gaussian["pos"],
+            rgb=init_gaussian["rgb"],
+            opacty=init_gaussian["opa"],
+            quaternion=init_gaussian["quat"],  # B x 4
+            scale=init_gaussian["scale"],
+            init_value=True,
+            device=self.device
         )
 
     def save_ckpt(self, path):
@@ -207,13 +207,8 @@ class Splatter(nn.Module):
         return culled_gaussians, mask
 
     def render(self, culling_gaussians: Gaussians,  w2c_r: torch.tensor, w2c_t: torch.tensor):
-        # if len(gaussians.pos) == 0:
-        #     return torch.zeros(self.tile_info.padded_height, self.tile_info.padded_width, 3, device=self.device, dtype=torch.float32)
-
-        # print("pos", culling_gaussians.pos.shape)
-
-        # print("rgb", culling_gaussians.rgb.shape)
-        # print(culling_gaussians.rgb)
+        if len(culling_gaussians.pos) == 0:
+            return torch.zeros(self.tile_info.padded_height, self.tile_info.padded_width, 3, device=self.device, dtype=torch.float32)
 
         tile_n_point = torch.zeros(
             len(self.tile_info), device=self.device, dtype=torch.int32)
