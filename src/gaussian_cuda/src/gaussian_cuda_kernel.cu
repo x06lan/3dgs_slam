@@ -967,7 +967,7 @@ __global__ void draw_kernel(
     res[(id_x + id_y * w)*4 + 0] = color[0] / accum_weight;
     res[(id_x + id_y * w)*4 + 1] = color[1] / accum_weight;
     res[(id_x + id_y * w)*4 + 2] = color[2] / accum_weight;
-    res[(id_x + id_y * w)*4 + 3] = alpha;
+    res[(id_x + id_y * w)*4 + 3] =1.0- accum / accum_weight;
 }
 
 // void draw(Gaussian3ds & tile_sorted_gaussians, torch::Tensor tile_n_point_accum, torch::Tensor res, float focal_x, float focal_y){

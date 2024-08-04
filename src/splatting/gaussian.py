@@ -20,8 +20,7 @@ class Gaussians(nn.Module):
 
         if init_value:
 
-            def setup(v): return v.to(torch.float32).to(
-                torch.device(self.device))
+            def setup(v): return v.to(torch.float32).to(self.device)
 
             self.pos = nn.parameter.Parameter(setup(pos))
             self.rgb = nn.parameter.Parameter(setup(rgb))
@@ -42,12 +41,14 @@ class Gaussians(nn.Module):
 
     def append(self, other):
         assert self.quaternion is not None and self.scale is not None
-        self.pos = nn.parameter.Parameter(torch.cat([self.pos, other.pos]))
+        self.pos = nn.parameter.Parameter(
+            torch.cat([self.pos, other.pos]), requires_grad=True)
         self.rgb = nn.parameter.Parameter(torch.cat([self.rgb, other.rgb]))
         self.opacity = nn.parameter.Parameter(
             torch.cat([self.opacity, other.opacity]))
         self.scale = nn.parameter.Parameter(
             torch.cat([self.scale, other.scale]))
+
         self.quaternion = nn.parameter.Parameter(torch.cat(
             [self.quaternion, other.quaternion]))
 

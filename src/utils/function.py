@@ -260,3 +260,10 @@ def q2r(qvec):
     ]
     rot = torch.stack(rot, dim=1).reshape(-1, 3, 3)
     return rot
+
+
+def save_image(path, image):
+    img_npy = image.clip(0, 1).detach().cpu().numpy()
+
+    cv2.imwrite(
+        path, (img_npy*255).astype(np.uint8)[..., ::-1])

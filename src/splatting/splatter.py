@@ -23,6 +23,7 @@ from parser.dataset import ColmapDataset
 from utils.image import ImageInfo
 from utils.camera import Camera
 from utils.point import Point3D
+from utils.function import save_image
 
 import ipdb
 
@@ -33,6 +34,7 @@ class Splatter(nn.Module):
         super().__init__()
 
         self.device = torch.device("cuda")
+
         self.downsample: int = downsample
         self.near: float = 0.3
         self.default_color = torch.tensor([0.0, 0.0, 0.0], device=self.device)
@@ -100,6 +102,15 @@ class Splatter(nn.Module):
         elif load_ckpt is not None:
             # load checkpoint
             init_gaussian = torch.load(load_ckpt)
+        else:
+            # random initialization
+            n = 10
+            init_gaussian["pos"] = torch.rand(n, 3)
+            init_gaussian["rgb"] = torch.rand(n, 3)
+            init_gaussian["opa"] = torch.ones(n)
+            init_gaussian["quat"] = torch.Tensor(
+                [1, 0, 0, 0]).unsqueeze(dim=0).repeat(n, 1)
+            init_gaussian["scale"] = torch.ones(n, 3)*self.init_scale
 
         self.gaussians = Gaussians(
             pos=init_gaussian["pos"],
@@ -120,6 +131,17 @@ class Splatter(nn.Module):
             "scale": self.gaussians.scale,
         }
         torch.save(ckpt, path)
+
+    def get_parameter(self) -> nn.Parameter:
+        return [
+            self.gaussians.pos,
+            self.gaussians.rgb,
+            self.gaussians.scale,
+            self.gaussians.opacity,
+            self.gaussians.quaternion,
+        ]
+
+        # return super().get_parameter(target)
 
     def w2c(self, img_info: ImageInfo):
 
@@ -301,12 +323,6 @@ class Splatter(nn.Module):
 
         return rendered_image
 
-    def save_image(path, image):
-        img_npy = image.clip(0, 1).detach().cpu().numpy()
-
-        cv2.imwrite(
-            path, (img_npy*255).astype(np.uint8)[..., ::-1])
-
     def forward(self,  imageInfo: ImageInfo):
         # w2c_r, w2c_t = imageInfo.w2c()
         w2c_r, w2c_t = self.w2c(imageInfo)
@@ -362,6 +378,6 @@ if __name__ == "__main__":
         # print(splatter.gaussians.rgb.grad.abs().mean())
 
         # save image
-        Splatter.save_image("output.png", render_image)
+        save_image("output.png", render_image)
 
         # time.sleep(0.3)
