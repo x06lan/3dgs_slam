@@ -6,7 +6,10 @@ _src_path = os.path.dirname(os.path.abspath(__file__))
 
 nvcc_flags = [
     '-O3', '-std=c++17',
-    # '-U__CUDA_NO_HALF_OPERATORS__', '-U__CUDA_NO_HALF_CONVERSIONS__', '-U__CUDA_NO_HALF2_OPERATORS__',
+    # '-Xptxas', '-v',
+    '-U__CUDA_NO_HALF_OPERATORS__',
+    '-U__CUDA_NO_HALF_CONVERSIONS__',
+    '-U__CUDA_NO_HALF2_OPERATORS__',
 ]
 
 c_flags = ['-O3', '-std=c++17']

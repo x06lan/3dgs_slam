@@ -102,6 +102,8 @@ class Splatter(nn.Module):
         elif load_ckpt is not None:
             # load checkpoint
             init_gaussian = torch.load(load_ckpt)
+            for k in init_gaussian.keys():
+                print(k, init_gaussian[k].shape)
         else:
             # random initialization
             n = 10

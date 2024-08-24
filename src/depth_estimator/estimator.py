@@ -1,6 +1,7 @@
 import torch
 import cv2
 import numpy as np
+import functools
 import torch.nn.functional as F
 from torchvision.transforms import Compose
 from .depth_anything.dpt import DepthAnything
@@ -47,6 +48,7 @@ class Estimator:
             ]
         )
 
+    # @functools.lru_cache(maxsize=64)
     def estimate(self, image):
         """
         Args:
