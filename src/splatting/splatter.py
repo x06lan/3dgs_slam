@@ -332,8 +332,8 @@ class Splatter(nn.Module):
         culling_gaussians, mask = self.project_culling(w2c_r, w2c_t)
         padded_rendered_image = self.render(culling_gaussians, w2c_r, w2c_t)
 
-        padded_render_image = torch.clamp(padded_rendered_image, 0, 1)
-        render_image = self.tile_info.crop(padded_render_image)
+        # padded_rendered_image = torch.clamp(padded_rendered_image, 0, 1)
+        render_image = self.tile_info.crop(padded_rendered_image)
 
         return render_image
 

@@ -14,7 +14,7 @@ from parser.dataset import ColmapDataset
 from utils.image import ImageInfo
 from utils.camera import Camera
 from utils.point import Point3D
-from utils.function import save_image
+from utils.function import save_image, resize_image, normalize, maxmin_normalize
 
 
 class Trainer():
@@ -33,8 +33,16 @@ class Trainer():
         self.l1 = nn.L1Loss()
         self.l2 = nn.MSELoss()
 
+        self.depth_cache = {}
+
+    def depth_normalize(self, depth: torch.Tensor):
+        depth = depth.to(torch.float)
+        # depth, _ = normalize(depth)
+        depth = maxmin_normalize(depth)
+        return depth
+
     def critic(self, source, target):
-        ssim_weight = 0.1
+        ssim_weight = 0.5
 
         # map B,H,W,C to B,C,H,W
         ssim = self.ssim(source.unsqueeze(0).permute(
@@ -55,27 +63,43 @@ class Trainer():
         self.optimizer.zero_grad()
 
         if grad:
-            render_image, mask = self.splatter(
+            render_image, gt_depth = self.splatter(
                 image_info, ground_truth, cover)
+
+            # resize gt_depth to match render_image
+            if image_info.id not in self.depth_cache:
+
+                gt_depth = resize_image(
+                    gt_depth, render_image.shape[1], render_image.shape[0])
+
+                self.depth_cache[image_info.id] = gt_depth
         else:
             with torch.no_grad():
-                render_image, mask = self.splatter(
+                render_image, gt_depth = self.splatter(
                     image_info, ground_truth, cover)
                 return render_image, {}
 
         render_image_rgb = render_image[..., :3]
-
         ground_truth = ground_truth.to(self.splatter.device)
 
-        loss = self.critic(render_image_rgb, ground_truth)
+        render_depth = render_image[..., 4]
+        render_depth = self.depth_normalize(render_depth)
+        render_depth = render_depth.unsqueeze(-1)
 
-        # self.splatter.gaussians.pos[100:].grad *= 0.1
+        gt_depth = self.depth_cache[image_info.id].to(self.splatter.device)
+        gt_depth = self.depth_normalize(gt_depth)
+
+        depth_loss = self.critic(render_depth, gt_depth)
+        rgb_loss = self.critic(render_image_rgb, ground_truth)
+
+        loss = rgb_loss + depth_loss*10.0
 
         dump = {
             "loss": loss.item(),
             "count": self.splatter.gaussians.pos.shape[0],
-            "lr": self.optimizer.param_groups[0]["lr"]
-            # "grad": splatter.gaussians.pos.grad[0]
+            "lr": self.optimizer.param_groups[0]["lr"],
+            # "depth_paramter": self.splatter.depth_paramter.tolist(),
+            # "depth": render_depth[0],
         }
 
         loss.backward()
@@ -136,7 +160,7 @@ if __name__ == "__main__":
 
         current = image_info.id
 
-        for i in range(5):
+        for i in range(2):
             # for info, gt in reversed(window_list):
             for info, gt in (window_list):
 
@@ -147,40 +171,18 @@ if __name__ == "__main__":
                     grad = True
                     cover = (i == 0) and (current == info.id)
 
-                # if cover:
-                #     print(current)
-
                 render_image, status = trainer.step(image_info=info,
                                                     ground_truth=gt, cover=cover, grad=grad)
                 # print(render_image.shape)
 
                 bar.set_postfix(status)
                 # save image
-            save_image("output.png",  render_image[..., :3])
+        save_image("output.png",  render_image[..., :3])
+
+        depth_image = render_image[..., 4].unsqueeze(-1)
+        depth_image = maxmin_normalize(depth_image)
+        depth_image = depth_image.repeat(1, 1,  3)
+        save_image("depth_output.png", depth_image)
 
         if not test:
             trainer.splatter.save_ckpt("3dgs_slam_ckpt.pth")
-
-    # refinement
-    # if refine:
-    #     print("Refinement")
-
-    #     # trainer.lr = 0.003
-
-    #     for i in range(5):
-    #         bar = tqdm(range(0, len(dataset.image_info)))
-    #         for img_id in bar:
-    #             frame = img_id
-
-    #             ground_truth = dataset.images[frame]
-    #             ground_truth = ground_truth.to(torch.float).to(
-    #                 trainer.splatter.device)/255
-    #             info = dataset.image_info[frame]
-
-    #             cover = False
-    #             grad = True
-    #             render_image, status = trainer.step(image_info=info,
-    #                                                 ground_truth=ground_truth, cover=cover, grad=grad)
-    #             bar.set_postfix(status)
-    #             save_image("output.png",  render_image[..., :3])
-    #         trainer.splatter.save_ckpt("3dgs_slam_ckpt_refine.pth")

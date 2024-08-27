@@ -1,6 +1,5 @@
 import cv2
 import time
-import functools
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -22,22 +21,8 @@ from parser.dataset import ColmapDataset
 from utils.image import ImageInfo
 from utils.camera import Camera
 from utils.point import Point3D
-from utils.function import save_image
+from utils.function import save_image, resize_image, normalize, maxmin_normalize
 import ipdb
-
-
-@functools.lru_cache(maxsize=64)
-def resize_image(image, w, h, mode='bilinear'):
-
-    image = image.permute(2, 0, 1).unsqueeze(0)
-    # Perform interpolation
-    image = F.interpolate(image, size=(
-        h, w), mode='bilinear', align_corners=False)
-
-    # Reshape back to (H, W, C) format
-    image = image.squeeze(0).permute(1, 2, 0)
-
-    return image
 
 
 class CoverSplatter(Splatter):
@@ -45,10 +30,12 @@ class CoverSplatter(Splatter):
 
         super(CoverSplatter, self).__init__(
             init_points, load_ckpt, downsample, use_sh_coeff)
-        self.distance: int = 64
+
+        self.distance: int = 8
         self.depth_estimator = Estimator()
         self.down_w, self.down_h = 0, 0
         self.coords: torch.Tensor
+        self.depth_paramter = nn.Parameter(torch.tensor([0.08, 5.0, 0.0]))
 
     def set_camera(self, _camera: Camera):
 
@@ -91,9 +78,6 @@ class CoverSplatter(Splatter):
         camera_space = torch.einsum(
             'ij,bj->bi', K_inv, screen_space)  # Shape: (N, 3)
 
-        # depth = (1.0/(depth*0.07+0.001))
-        depth = (1.0/(depth*0.08+0.001))*5.0
-
         camera_space *= depth.to(self.device)
 
         world = torch.einsum('ij,bj->bi', R_inv,
@@ -101,38 +85,7 @@ class CoverSplatter(Splatter):
 
         return world
 
-    # def screen_space_to_world_coords(self, extrinsics: torch.Tensor, camera: Camera, image_coord: torch.Tensor, depth: torch.Tensor):
-
-    #     K = torch.zeros(4, 4).to(torch.float32).to(self.device)
-    #     K[:3, :3] = camera.K_tensor
-    #     K[3, 3] = 1.0
-
-    #     E = (extrinsics).to(torch.float32).to(self.device)
-
-    #     w = torch.tensor(camera.width).to(torch.float32).to(self.device)
-    #     h = torch.tensor(camera.height).to(torch.float32).to(self.device)
-
-    #     screen_space = image_coord.clone().to(torch.float32)
-
-    #     K = K.unsqueeze(0)
-    #     E = E.unsqueeze(0)
-    #     w = w.unsqueeze(0)
-    #     h = h.unsqueeze(0)
-
-    #     screen_space = screen_space.to(self.device)
-    #     depth = depth.to(self.device)
-
-    #     depth = (1.0/(depth*0.09+0.001))*4.0
-
-    #     pinhole = kornia.geometry.camera.PinholeCamera(
-    #         K, E, h, w)
-    #     return pinhole.unproject(screen_space, depth)
-
-    def cover_point(self, image_info: ImageInfo, ground_truth: torch.Tensor, render_image: torch.Tensor, alpha_threshold: float = 0.5):
-
-        assert render_image.shape[:2] == ground_truth.shape[:2]
-
-        depth = self.depth_estimator.estimate(ground_truth.cpu().numpy()).cpu()
+    def cover_point(self, image_info: ImageInfo, ground_truth: torch.Tensor, depth: torch.Tensor, render_image: torch.Tensor, alpha_threshold: float = 0.5):
 
         # resize
         render_image_down = resize_image(
@@ -159,38 +112,44 @@ class CoverSplatter(Splatter):
         uncover_point = self.screen_space_to_world_coords(
             image_info.extrinsic(), self.camera, uncover_coords, uncover_depth)
 
-        # todo depth base auto scale
-        # scale = (1.0/(uncover_depth*0.09+0.001))*4.0
+        n = uncover_point.shape[0]
 
+        # todo depth base auto scale
         uncover_scale = torch.ones(
+            # (uncover_point.shape[0], 3))*self.distance*0.001
             (uncover_point.shape[0], 3))*0.02
+        # scale = (1.0/(uncover_depth*0.09+0.001))*4.0
         # scale = uncover_depth/self.camera.fx
         # uncover_scale = torch.ones(
         #     (uncover_point.shape[0], 3))*0.01*self.distance*scale
+        new_quaternion = torch.Tensor(
+            [1, 0, 0, 0]).unsqueeze(dim=0).repeat(n, 1)
+        new_opacity = torch.ones(n)*self.init_opacity
 
-        depth = mask.unsqueeze(2).repeat(1, 1, 3).float()
-        # depth = render_image[:, :, 3].unsqueeze(2).repeat(1, 1, 3).float()
-        # print(depth)
-        depth *= render_image_down[:, :, :3].cpu()
+        append_gaussian = Gaussians(
+            pos=uncover_point, rgb=uncover_color, opacty=new_opacity, scale=uncover_scale, quaternion=new_quaternion, device=self.device, init_value=True)
 
-        return depth, uncover_point, uncover_color, uncover_scale
+        return append_gaussian
 
     def adaption_control(self, gaussians: Gaussians, grad_threshold=10.0):
+
         with_grad = not isinstance(gaussians.pos.grad, type(None))
+        with_grad = False
 
         if with_grad:
             add_mask = gaussians.pos.grad > grad_threshold
+            add_mask = add_mask.any(-1)
 
             append_gaussian = gaussians.filte(add_mask)
 
         # scale < 0.1
-        del_mask = torch.norm(gaussians.scale, dim=-1) < 0.0001
-        # scale > 1.0
+        del_mask = torch.norm(gaussians.scale, dim=-1) < 0.01
+        # scale > 100.0
         del_mask = torch.logical_or(
-            del_mask, torch.norm(gaussians.scale, dim=-1) > 1.0)
-        # opacity < 1.0
+            del_mask, torch.norm(gaussians.scale, dim=-1) > 1000.0)
+        # opacity < 0.001
         del_mask = torch.logical_or(
-            del_mask,  gaussians.opacity < 0.05)
+            del_mask,  gaussians.opacity < 0.001)
 
         delete_count = torch.logical_not(del_mask).sum()
 
@@ -200,7 +159,10 @@ class CoverSplatter(Splatter):
 
         if with_grad:
 
-            append_count = append_gaussian.shape[0]
+            add_mask = torch.logical_and(
+                add_mask, torch.logical_not(del_mask))
+
+            append_count = len(append_gaussian)
             gaussians.append(append_gaussian)
 
         return gaussians, (delete_count, append_count)
@@ -212,23 +174,34 @@ class CoverSplatter(Splatter):
         render_image = super().forward(image_info)
 
         if cover:
-            depth, new_point, new_color, new_scale = self.cover_point(
-                image_info, ground_truth, render_image, alpha_threshold=0.7)
+            assert render_image.shape[:2] == ground_truth.shape[:2]
 
-            n = new_point.shape[0]
-            new_quaternion = torch.Tensor(
-                [1, 0, 0, 0]).unsqueeze(dim=0).repeat(n, 1)
-            new_opacity = torch.ones(n)*self.init_opacity
+            gt_depth = self.depth_estimator.estimate(
+                ground_truth.cpu().numpy()).cpu()
+            # uncover_depth = (uncover_depth-uncover_depth.min())/uncover_depth.max()
+            # depth = (1.0/(depth*0.07+0.001))
+            # uncover_depth = (1.0/(uncover_depth*0.03+0.001))*5.0
+            # uncover_depth = (1.0/(uncover_depth*0.03+0.0001))*2.5
+            scaled_depth = (1.0/(gt_depth*0.08+0.001))*3.0
+            # scaled_depth = (1.0/(gt_depth*0.08+0.001))*5.0
+            # poster
+            # uncover_depth = (1.0/(uncover_depth*0.01+0.001))*0.5
+            # uncover_depth = (1.0/(uncover_depth*0.08+0.001))*10.0
+            # uncover_depth = (1.0/(uncover_depth*0.1+0.0001))
+            # uncover_depth = 1.0/uncover_depth*0.01
 
-            append_gaussian = Gaussians(
-                pos=new_point, rgb=new_color, opacty=new_opacity, scale=new_scale, quaternion=new_quaternion, device=self.device, init_value=True)
+            # scaled_depth = (
+            #     1.0/(gt_depth*self.depth_paramter[0]+0.0001))*self.depth_paramter[1]
 
-            # self.gaussians, _ = self.adaption_control(
-            #     self.gaussians, grad_threshold=10)
+            append_gaussian = self.cover_point(
+                image_info, ground_truth, scaled_depth, render_image, alpha_threshold=0.7)
+
+            # self.gaussians, status = self.adaption_control(
+            #     self.gaussians, grad_threshold=0.01)
+            # print(status)
 
             self.gaussians.append(append_gaussian)
-            # self.gaussians = append_gaussian
-            return render_image, depth
+            return render_image, gt_depth
 
         return render_image, None
 
@@ -236,13 +209,13 @@ class CoverSplatter(Splatter):
 if __name__ == "__main__":
     frame = 0
     downsample = 4
-    # lr = 0.005
-    lr = 0.001
+    lr = 0.005
+    # lr = 0.001
     ssim_weight = 0.1
     batch = 40
 
-    # dataset = ColmapDataset("dataset/nerfstudio/poster",
-    dataset = ColmapDataset("dataset/nerfstudio/stump",
+    dataset = ColmapDataset("dataset/nerfstudio/poster",
+                            # dataset = ColmapDataset("dataset/nerfstudio/stump",
                             # dataset = ColmapDataset("dataset/nerfstudio/aspen",
                             # dataset = ColmapDataset("dataset/nerfstudio/redwoods2",
                             # dataset = ColmapDataset("dataset/nerfstudio/person",
@@ -267,23 +240,43 @@ if __name__ == "__main__":
         # raw_image = ground_truth.numpy()
 
         image_info = dataset.image_info[frame]
+        depth = None
 
         for i in range(batch):
 
-            render_image, mask = splatter(
+            render_image, gt_depth = splatter(
                 image_info, ground_truth, i % 10 == 0)
+            if gt_depth is not None:
+                depth = gt_depth
+                depth = resize_image(
+                    depth, render_image.shape[1], render_image.shape[0])
+                depth = depth.to(splatter.device)
+                depth, _ = normalize(depth)
+                depth = maxmin_normalize(depth)
 
-            render_image = render_image[..., :3]
+            render_rgb = torch.clamp(render_image[..., :3], 0, 1)
 
             ground_truth = ground_truth.to(splatter.device)
 
             optimizer = torch.optim.Adam(
                 splatter.gaussians.parameters(), lr=lr)
-            loss = l2(render_image, ground_truth)
+
+            loss_rgb = l2(render_rgb, ground_truth)
+
+            render_depth = render_image[...,
+                                        4].unsqueeze(-1)
+            render_depth, _ = normalize(render_depth)
+            render_depth = maxmin_normalize(render_depth)
+
+            loss_depth = l2(render_depth, depth)*10.0
+
+            loss = loss_rgb+loss_depth
             dump = {
                 "loss": loss.item(),
                 "count": splatter.gaussians.pos.shape[0],
-                "lr": optimizer.param_groups[0]["lr"]
+                "lr": optimizer.param_groups[0]["lr"],
+                "depth_loss": loss_depth.item(),
+                # "param": splatter.depth_paramter
                 # "grad": splatter.gaussians.pos.grad[0]
             }
             bar.set_postfix(dump)
@@ -293,5 +286,22 @@ if __name__ == "__main__":
             optimizer.step()
 
         # save image
-        save_image("output.png", render_image[:, :, :3])
+
+        # depth = [..., 4]
+        # depth = (depth - depth.min())/depth.max()
+        # depth = depth.unsqueeze(-1).repeat(1, 1, 3).float()
+
+        # print(depth)
+        # save_image("output.png", depth)
+        image_info = dataset.image_info[0]
+        render_image, gt_depth = splatter(
+            image_info, None, False)
+        render_depth = render_image[..., 4].unsqueeze(-1)
+        render_depth, _ = normalize(render_depth)
+        render_depth = maxmin_normalize(render_depth)
+        render_depth = render_depth.repeat(1, 1, 3).float()
+        image = render_depth
+        # image = render_image[:, :, :3]
+        save_image("output.png", image)
+
         splatter.save_ckpt("3dgs_slam_ckpt.pth")

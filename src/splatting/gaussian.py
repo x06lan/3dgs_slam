@@ -39,6 +39,13 @@ class Gaussians(nn.Module):
             self.quaternion = quaternion
             self.covariance = covariance
 
+    @property
+    def shape(self):
+        return self.pos.shape[:2]
+
+    def __len__(self):
+        return self.pos.shape[0]
+
     def append(self, other):
         assert self.quaternion is not None and self.scale is not None
         self.pos = nn.parameter.Parameter(
