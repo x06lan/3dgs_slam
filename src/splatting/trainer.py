@@ -4,12 +4,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 from typing import Union, Tuple, Optional
-from torchvision import transforms
+# from torchvision import transforms
 from torchmetrics.image import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
 # from pytorch3d.renderer import PerspectiveCameras
 
-from cover import CoverSplatter
-from gaussian import Gaussians
+from .cover import CoverSplatter
+from .gaussian import Gaussians
+
 from parser.dataset import ColmapDataset
 from utils.image import ImageInfo
 from utils.camera import Camera
@@ -25,7 +26,9 @@ class Trainer():
 
         self.splatter = CoverSplatter(
             load_ckpt=ckpt, downsample=self.downsample)
-        self.splatter.set_camera(camera)
+
+        if camera is not None:
+            self.splatter.set_camera(camera)
 
         self.ssim = StructuralSimilarityIndexMeasure(
             reduction="elementwise_mean").to(self.splatter.device)
@@ -54,7 +57,7 @@ class Trainer():
         return ssim_weight*ssim_loss + (1-ssim_weight)*l2_loss
         # return self.l2(source, target)
 
-    def step(self, image_info: ImageInfo, ground_truth: torch.Tensor, cover: bool = False, grad: bool = True):
+    def step(self, image_info: ImageInfo, ground_truth: torch.Tensor, cover: bool = False, grad: bool = True) -> Tuple[torch.Tensor, dict]:
 
         # assert ground_truth.device == self.splatter.device
 

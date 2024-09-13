@@ -155,6 +155,7 @@ class Viewer:
 
         @pc.on("datachannel")
         def on_datachannel(channel):
+
             @channel.on("message")
             def on_message(message):
                 if isinstance(message, str):

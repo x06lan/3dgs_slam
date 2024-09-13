@@ -14,11 +14,13 @@ from torchmetrics.image import StructuralSimilarityIndexMeasure, PeakSignalNoise
 from pykdtree.kdtree import KDTree
 
 
-import utils.function as function
 import gaussian_cuda
-from renderer import draw, global_culling
-from gaussian import Gaussians
-from tiles import Tiles
+import utils.function as function
+
+from .renderer import draw, global_culling
+from .gaussian import Gaussians
+from .tiles import Tiles
+
 from parser.dataset import ColmapDataset
 from utils.image import ImageInfo
 from utils.camera import Camera
@@ -326,6 +328,7 @@ class Splatter(nn.Module):
         return rendered_image
 
     def forward(self,  imageInfo: ImageInfo):
+        assert self.camera is not None
         # w2c_r, w2c_t = imageInfo.w2c()
         w2c_r, w2c_t = self.w2c(imageInfo)
 

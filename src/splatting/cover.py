@@ -12,16 +12,16 @@ from kornia.geometry.conversions import convert_points_from_homogeneous, convert
 # from pytorch3d.renderer import PerspectiveCameras
 
 
+from .splatter import Splatter
+from .gaussian import Gaussians
+
 from depth_estimator.estimator import Estimator
-from splatter import Splatter
-from gaussian import Gaussians
 from parser.dataset import ColmapDataset
-
-
 from utils.image import ImageInfo
 from utils.camera import Camera
 from utils.point import Point3D
 from utils.function import save_image, resize_image, normalize, maxmin_normalize
+
 import ipdb
 
 

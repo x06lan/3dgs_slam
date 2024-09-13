@@ -2,7 +2,8 @@
 import torch
 import torch.nn as nn
 import gaussian_cuda
-import renderer
+
+from .renderer import trunc_exp
 from utils import function
 
 EPS = 1e-6
@@ -70,7 +71,7 @@ class Gaussians(nn.Module):
         if scale_activation == "abs":
             return self.scale.abs()+EPS
         elif scale_activation == "exp":
-            return renderer.trunc_exp(self.scale)
+            return trunc_exp(self.scale)
         else:
             print("No support scale activation")
             exit()
@@ -128,7 +129,7 @@ class Gaussians(nn.Module):
         if scale_activation == "abs":
             _scale = self.scale.abs()+EPS
         elif scale_activation == "exp":
-            _scale = renderer.turn_exp(self.scale)
+            _scale = turn_exp(self.scale)
         else:
             print("No support scale activation")
             exit()
