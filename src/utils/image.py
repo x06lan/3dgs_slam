@@ -7,7 +7,7 @@ import utils
 import utils.function
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class BaseImageData:
     id: int
     qvec: torch.tensor

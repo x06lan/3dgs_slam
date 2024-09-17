@@ -7,8 +7,8 @@ from tqdm import tqdm
 from typing import Union, Tuple, Optional
 from torchvision import transforms
 from torchmetrics.image import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
-import kornia
-from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
+# import kornia
+# from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 # from pytorch3d.renderer import PerspectiveCameras
 
 

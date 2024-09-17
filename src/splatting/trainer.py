@@ -128,8 +128,8 @@ if __name__ == "__main__":
     if test:
         batch = 1
 
-    # dataset = ColmapDataset("dataset/nerfstudio/poster",
-    dataset = ColmapDataset("dataset/nerfstudio/stump",
+    dataset = ColmapDataset("dataset/nerfstudio/poster",
+                            # dataset = ColmapDataset("dataset/nerfstudio/stump",
                             # dataset = ColmapDataset("dataset/nerfstudio/aspen",
                             # dataset = ColmapDataset("dataset/nerfstudio/redwoods2",
                             # dataset = ColmapDataset("dataset/nerfstudio/person",
@@ -163,7 +163,7 @@ if __name__ == "__main__":
 
         current = image_info.id
 
-        for i in range(2):
+        for i in range(1):
             # for info, gt in reversed(window_list):
             for info, gt in (window_list):
 

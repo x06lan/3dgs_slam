@@ -25,4 +25,5 @@ docker exec -it 3dgs_slam bash
 
 export PYTHONPATH="${PYTHONPATH}:/app/src"
 python3 -m src.splatting.trainer
+python3 src/main.py
 ```

@@ -233,8 +233,12 @@ class Splatter(nn.Module):
         return culled_gaussians, mask
 
     def render(self, culling_gaussians: Gaussians,  w2c_r: torch.tensor, w2c_t: torch.tensor):
-        if len(culling_gaussians.pos) == 0:
+
+        def empty_image():
             return torch.zeros(self.tile_info.padded_height, self.tile_info.padded_width, 3, device=self.device, dtype=torch.float32)
+
+        if len(culling_gaussians.pos) == 0:
+            return empty_image()
 
         tile_n_point = torch.zeros(
             len(self.tile_info), device=self.device, dtype=torch.int32)
@@ -270,8 +274,8 @@ class Splatter(nn.Module):
         tile_n_point = torch.min(
             tile_n_point, torch.ones_like(tile_n_point)*tile_max_point)
 
-        # if tile_n_point.sum() == 0:
-        #     return torch.zeros(self.tile_info.padded_height, self.tile_info.padded_width, 3, device=self.device, dtype=torch.float32)
+        if tile_n_point.sum() == 0:
+            return empty_image()
 
         gathered_list = torch.empty(
             tile_n_point.sum(), dtype=torch.int32, device=self.device)
@@ -293,6 +297,8 @@ class Splatter(nn.Module):
         )
         tile_gaussians = culling_gaussians.filte(
             gathered_list.long())
+        if tile_gaussians.pos.shape[0] == 0:
+            return empty_image()
 
         # sort by tile id and depth
         BASE = tile_gaussians.pos[..., 2].max()
