@@ -172,3 +172,7 @@ output.png
 # save model
 *.pth
 /bin
+
+colmap_output
+record_images
+ug_note.md
