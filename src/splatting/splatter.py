@@ -9,33 +9,38 @@ import time
 from tqdm import tqdm
 from typing import Union, Tuple
 from torchmetrics.functional import peak_signal_noise_ratio as psnr_func
-from torchmetrics import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
+from torchmetrics.image import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
 
 from pykdtree.kdtree import KDTree
 
 
-import utils.function as function
 import gaussian_cuda
-from renderer import draw, global_culling
-from gaussian import Gaussians
-from tiles import Tiles
+import utils.function as function
+
+from .renderer import draw, global_culling
+from .gaussian import Gaussians
+from .tiles import Tiles
+
 from parser.dataset import ColmapDataset
 from utils.image import ImageInfo
 from utils.camera import Camera
 from utils.point import Point3D
+from utils.function import save_image
+
+import ipdb
 
 
 class Splatter(nn.Module):
-    def __init__(self, init_points: Union[Point3D, None] = None,  load_ckpt: Union[str, None] = None, downsample=1, use_sh_coeff=False, debug=False):
+    def __init__(self, init_points: Union[Point3D, dict, None] = None,  load_ckpt: Union[str, None] = None, downsample=1, use_sh_coeff=False, depthSpatting=False):
 
         super().__init__()
 
         self.device = torch.device("cuda")
+
         self.downsample: int = downsample
-        self.debug: bool = debug
         self.near: float = 0.3
         self.default_color = torch.tensor([0.0, 0.0, 0.0], device=self.device)
-        self.init_scale = 0.1
+        self.init_scale = 0.008
         self.init_opacity = 0.8
         self.camera: Camera = None
         # self.w2c_r = None
@@ -47,65 +52,79 @@ class Splatter(nn.Module):
 
         # TODO : corrent this initialization
 
+        init_gaussian = dict()
         if (init_points is not None):
-            _rgb = []
-            _pos = []
-            for pid, point in init_points.items():
-                _pos.append(torch.from_numpy(point.xyz))
-                _rgb.append(function.inverse_sigmoid(
-                    torch.from_numpy(point.rgb)))
+            if (isinstance(init_points, Point3D)):
+                _rgb = []
+                _pos = []
+                for pid, point in init_points.items():
+                    _pos.append(torch.from_numpy(point.xyz))
+                    _rgb.append(function.inverse_sigmoid(
+                        torch.from_numpy(point.rgb)))
 
-            rgb = torch.stack(_rgb).to(torch.float32).to(self.device)
-            pos = torch.stack(_pos).to(torch.float32).to(self.device)
+                rgb = torch.stack(_rgb).to(torch.float32).to(self.device)
+                pos = torch.stack(_pos).to(torch.float32).to(self.device)
 
-            _pos_np = pos.cpu().numpy()
-            kd_tree = KDTree(_pos_np)
-            dist, idx = kd_tree.query(_pos_np, k=4)
-            mean_min_three_dis = dist[:, 1:].mean(axis=1)
-            mean_min_three_dis = torch.Tensor(mean_min_three_dis).to(
-                torch.float32) * self.init_scale
+                n = pos.shape[0]
 
-            self.gaussians = Gaussians(
-                pos=pos,
-                rgb=rgb,
-                opacty=torch.ones(len(init_points)).to(self.device),
-                quaternion=torch.Tensor([1, 0, 0, 0]).unsqueeze(dim=0).repeat(
-                    len(init_points), 1).to(torch.float32).to(self.device),  # B x 4
-                scale=torch.ones(len(init_points), 3).to(torch.float32).to(
-                    self.device)*mean_min_three_dis.unsqueeze(dim=1).to(self.device),
-                init_value=True
-            )
+                _pos_np = pos.cpu().numpy()
+                kd_tree = KDTree(_pos_np)
+                dist, idx = kd_tree.query(_pos_np, k=4)
+                mean_min_three_dis = dist[:, 1:].mean(axis=1)
+                mean_min_three_dis = torch.Tensor(mean_min_three_dis).to(
+                    torch.float32) * self.init_scale
+
+                init_gaussian["pos"] = pos
+                init_gaussian["rgb"] = rgb
+                init_gaussian["opa"] = torch.ones(n)
+                init_gaussian["quat"] = torch.Tensor(
+                    [1, 0, 0, 0]).unsqueeze(dim=0).repeat(n, 1)
+                init_gaussian["scale"] = torch.ones(
+                    n, 3)*mean_min_three_dis.unsqueeze(dim=1)
+
+            elif (isinstance(init_points, dict)):
+
+                n = init_points["pos"].shape[0]
+
+                init_gaussian = init_points
+
+                if "rgb" not in init_gaussian:
+                    init_gaussian["rgb"] = torch.ones(n, 3)*0.1
+
+                if "scale" not in init_gaussian:
+                    init_gaussian["scale"] = torch.ones(n, 3)*self.init_scale
+
+                if "opa" not in init_gaussian:
+                    init_gaussian["opa"] = torch.ones(n)*self.init_opacity
+
+                if "quat" not in init_gaussian:
+                    init_gaussian["quat"] = torch.Tensor(
+                        [1, 0, 0, 0]).unsqueeze(dim=0).repeat(n, 1)
+
         elif load_ckpt is not None:
             # load checkpoint
+            init_gaussian = torch.load(load_ckpt)
+            for k in init_gaussian.keys():
+                print(k, init_gaussian[k].shape)
+        else:
+            # random initialization
+            n = 10
+            init_gaussian["pos"] = torch.rand(n, 3)
+            init_gaussian["rgb"] = torch.rand(n, 3)
+            init_gaussian["opa"] = torch.ones(n)
+            init_gaussian["quat"] = torch.Tensor(
+                [1, 0, 0, 0]).unsqueeze(dim=0).repeat(n, 1)
+            init_gaussian["scale"] = torch.ones(n, 3)*self.init_scale
 
-            ckpt = torch.load(load_ckpt)
-            # ipdb.set_trace()
-            self.gaussians = Gaussians(
-                pos=ckpt["pos"],
-
-                rgb=ckpt["rgb"],
-                # rgb=torch.ones(
-                #     ckpt["pos"].shape[0], 3).to(torch.float32).to(self.device)*0.1,
-                opacty=ckpt["opa"],
-                # opacty=torch.ones(
-                #     ckpt["pos"].shape[0]).to(torch.float32).to(self.device)*0.3,
-                quaternion=ckpt["quat"],  # B x 4
-                scale=ckpt["scale"],
-                init_value=True
-            )
-            for key, value in ckpt.items():
-                print(key, value.shape)
-
-            # self.gaussians.rgb = torch.ones(
-            #     ckpt["pos"].shape[0], 3).to(torch.float32).to(self.device)*0.5
-
-            # self.gaussians.pos = nn.Parameter(ckpt["pos"])
-            # # self.gaussians.opacity = nn.Parameter(ckpt["opacity"])
-            # self.gaussians.opacity = nn.Parameter(ckpt["opa"])
-            # self.gaussians.rgb = nn.Parameter(ckpt["rgb"])
-            # # self.gaussians.quaternion = nn.Parameter(ckpt["quaternion"])
-            # self.gaussians.quaternion = nn.Parameter(ckpt["quat"])
-            # self.gaussians.scale = nn.Parameter(ckpt["scale"])
+        self.gaussians = Gaussians(
+            pos=init_gaussian["pos"],
+            rgb=init_gaussian["rgb"],
+            opacty=init_gaussian["opa"],
+            quaternion=init_gaussian["quat"],  # B x 4
+            scale=init_gaussian["scale"],
+            init_value=True,
+            device=self.device
+        )
 
     def save_ckpt(self, path):
         ckpt = {
@@ -116,6 +135,17 @@ class Splatter(nn.Module):
             "scale": self.gaussians.scale,
         }
         torch.save(ckpt, path)
+
+    def get_parameter(self) -> nn.Parameter:
+        return [
+            self.gaussians.pos,
+            self.gaussians.rgb,
+            self.gaussians.scale,
+            self.gaussians.opacity,
+            self.gaussians.quaternion,
+        ]
+
+        # return super().get_parameter(target)
 
     def w2c(self, img_info: ImageInfo):
 
@@ -184,6 +214,7 @@ class Splatter(nn.Module):
             half_width,
             half_height
         )
+
         mask = mask.bool()
 
         _rgb = self.gaussians.rgb[mask]
@@ -202,18 +233,17 @@ class Splatter(nn.Module):
         return culled_gaussians, mask
 
     def render(self, culling_gaussians: Gaussians,  w2c_r: torch.tensor, w2c_t: torch.tensor):
-        # if len(gaussians.pos) == 0:
-        #     return torch.zeros(self.tile_info.padded_height, self.tile_info.padded_width, 3, device=self.device, dtype=torch.float32)
 
-        # print("pos", culling_gaussians.pos.shape)
+        def empty_image():
+            return torch.zeros(self.tile_info.padded_height, self.tile_info.padded_width, 3, device=self.device, dtype=torch.float32)
 
-        # print("rgb", culling_gaussians.rgb.shape)
-        # print(culling_gaussians.rgb)
+        if len(culling_gaussians.pos) == 0:
+            return empty_image()
 
         tile_n_point = torch.zeros(
             len(self.tile_info), device=self.device, dtype=torch.int32)
         # MAXP = len(self.culling_gaussian_3d_image_space.pos)//10
-        tile_max_point = len(culling_gaussians.pos)//20
+        tile_max_point = max(culling_gaussians.pos.shape[0]//20, 5)
 
         tile_gaussian_list = torch.ones(
             len(self.tile_info), tile_max_point, device=self.device, dtype=torch.int32) * -1
@@ -244,8 +274,8 @@ class Splatter(nn.Module):
         tile_n_point = torch.min(
             tile_n_point, torch.ones_like(tile_n_point)*tile_max_point)
 
-        # if tile_n_point.sum() == 0:
-        #     return torch.zeros(self.tile_info.padded_height, self.tile_info.padded_width, 3, device=self.device, dtype=torch.float32)
+        if tile_n_point.sum() == 0:
+            return empty_image()
 
         gathered_list = torch.empty(
             tile_n_point.sum(), dtype=torch.int32, device=self.device)
@@ -267,6 +297,8 @@ class Splatter(nn.Module):
         )
         tile_gaussians = culling_gaussians.filte(
             gathered_list.long())
+        if tile_gaussians.pos.shape[0] == 0:
+            return empty_image()
 
         # sort by tile id and depth
         BASE = tile_gaussians.pos[..., 2].max()
@@ -301,20 +333,16 @@ class Splatter(nn.Module):
 
         return rendered_image
 
-    def save_image(path, image):
-        img_npy = image.clip(0, 1).detach().cpu().numpy()
-
-        cv2.imwrite(
-            path, (img_npy*255).astype(np.uint8)[..., ::-1])
-
     def forward(self,  imageInfo: ImageInfo):
+        assert self.camera is not None
+        # w2c_r, w2c_t = imageInfo.w2c()
         w2c_r, w2c_t = self.w2c(imageInfo)
 
         culling_gaussians, mask = self.project_culling(w2c_r, w2c_t)
         padded_rendered_image = self.render(culling_gaussians, w2c_r, w2c_t)
 
-        padded_render_image = torch.clamp(padded_rendered_image, 0, 1)
-        render_image = self.tile_info.crop(padded_render_image)
+        # padded_rendered_image = torch.clamp(padded_rendered_image, 0, 1)
+        render_image = self.tile_info.crop(padded_rendered_image)
 
         return render_image
 
@@ -339,6 +367,10 @@ if __name__ == "__main__":
 
     for img_id in tqdm(range(0, 100)):
         render_image = splatter.forward(dataset.image_info[frame])
+
+        # drop alpha channel
+        render_image = render_image[..., :3]
+
         # render_image = (render_image*255).dtype(np.uint8)
 
         ground_truth = dataset.images[frame].to(splatter.device)
@@ -357,6 +389,6 @@ if __name__ == "__main__":
         # print(splatter.gaussians.rgb.grad.abs().mean())
 
         # save image
-        Splatter.save_image("output.png", render_image)
+        save_image("output.png", render_image)
 
         # time.sleep(0.3)

@@ -11,7 +11,18 @@ var pc = null;
 var dc = null, dcInterval = null;
 
 let currentTranslation = [0, 0, 0]
+let currentRotation= [0, 0, 0]
+window.addEventListener('deviceorientation', deviceOrientationHandler, false);
+function deviceOrientationHandler (eventData) {
+    var tiltLR = eventData.gamma;
+    var tiltFB = eventData.beta;
+    var dir = eventData.alpha;
 
+    currentRotation = [tiltLR, tiltFB, dir]
+    // console.log(currentRotation)
+    // const quaternion = sensor.quaternion;
+    // currentRotation = [quaternion[0], quaternion[1], quaternion[2], quaternion[3]]
+}
 function createPeerConnection() {
     var config = {
         sdpSemantics: 'unified-plan'
@@ -158,10 +169,15 @@ function start() {
         dc.addEventListener('open', () => {
             dataChannelLog.textContent += '- open\n';
             dcInterval = setInterval(() => {
-                var message = current_stamp();
 
-                dataChannelLog.textContent += '> ' + message + '\n';
-                dc.send(message);
+                let message = {
+                    "time":current_stamp(),
+                    "acceleration": currentTranslation,
+                    "rotation": currentRotation,
+                };
+                // console.log(message)
+                dc.send(JSON.stringify(message));
+                // dataChannelLog.textContent += '> ' + message + '\n';
             }, 10);
         });
         dc.addEventListener('message', (evt) => {
@@ -383,7 +399,7 @@ function threejs() {
         // cameraOrthoHelper.update();
 
         points.push(new THREE.Vector3(currentTranslation[0], currentTranslation[1], currentTranslation[2]));
-        console.log(currentTranslation)
+        // console.log(currentTranslation)
         geometry.setFromPoints(points);
         // lineGeometry.verticesNeedUpdate = true;
 
@@ -401,4 +417,4 @@ function threejs() {
 
 
 enumerateInputDevices();
-threejs();
+// threejs();

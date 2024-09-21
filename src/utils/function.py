@@ -17,18 +17,23 @@
 * along with PYSLAM. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import sys
 import os
-import struct
-import numpy as np
-import logging
+import sys
 import cv2
+import math
+import logging
+import struct
+import functools
+import numpy as np
 import torch
-from dataclasses import dataclass
+import torch.nn.functional as F
+
+
 from termcolor import colored
 from typing import Dict, Union
 from pathlib import Path
-import math
+
+from dataclasses import dataclass
 
 
 from utils.camera import Camera
@@ -260,3 +265,91 @@ def q2r(qvec):
     ]
     rot = torch.stack(rot, dim=1).reshape(-1, 3, 3)
     return rot
+
+
+def euler_to_quaternion(x, y, z):
+    """
+    Convert Euler angles (in degrees) to a quaternion vector.
+
+    Parameters:
+    - x: Rotation around the x-axis (roll) in degrees.
+    - y: Rotation around the y-axis (pitch) in degrees.
+    - z: Rotation around the z-axis (yaw) in degrees.
+
+    Returns:
+    - A numpy array representing the quaternion vector [q0, q1, q2, q3].
+    """
+    # Convert degrees to radians
+    x_rad = np.radians(x)
+    y_rad = np.radians(y)
+    z_rad = np.radians(z)
+
+    # Calculate half angles
+    cy = np.cos(z_rad * 0.5)
+    sy = np.sin(z_rad * 0.5)
+    cp = np.cos(y_rad * 0.5)
+    sp = np.sin(y_rad * 0.5)
+    cr = np.cos(x_rad * 0.5)
+    sr = np.sin(x_rad * 0.5)
+
+    # Compute quaternion components
+    q0 = cr * cp * cy + sr * sp * sy  # w
+    q1 = sr * cp * cy - cr * sp * sy  # x
+    q2 = cr * sp * cy + sr * cp * sy  # y
+    q3 = cr * cp * sy - sr * sp * cy  # z
+
+    return np.array([q0, q1, q2, q3])
+
+
+def save_image(path, image):
+    img_npy = image.clip(0, 1).detach().cpu().numpy()
+
+    cv2.imwrite(
+        path, (img_npy*255).astype(np.uint8)[..., ::-1])
+
+
+def maxmin_normalize(v):
+    shape = v.shape
+    v = v.reshape(-1)
+
+    v = v - v.min()
+    v = v / v.max()
+
+    v = v.reshape(shape)
+    return v
+
+
+def normalize(v):
+    shape = v.shape
+    v = v.reshape(-1)
+    mu = v.mean()
+    std = v.std()
+    v = (v - mu) / std
+    v = v.reshape(shape)
+    return v, (mu, std)
+
+
+@functools.lru_cache(maxsize=64)
+def resize_image(image, w, h, mode='bilinear'):
+
+    image = image.permute(2, 0, 1).unsqueeze(0)
+    # Perform interpolation
+    image = F.interpolate(image, size=(
+        h, w), mode='bilinear', align_corners=False)
+
+    # Reshape back to (H, W, C) format
+    image = image.squeeze(0).permute(1, 2, 0)
+
+    return image
+
+
+def convert_z_up_to_y_up(quaternion):
+    w = quaternion[0]
+    x = quaternion[1]
+    y = quaternion[2]
+    z = quaternion[3]
+
+    quaternion[1] = z
+    quaternion[2] = -y
+    quaternion[3] = x
+    return quaternion

@@ -43,7 +43,8 @@ RUN DEBIAN_FRONTEND=noninteractive  apt install -y \
     libxext6
 
 # Install python packages
-RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+RUN pip3 install torch torchvision torchaudio xformers --index-url https://download.pytorch.org/whl/cu118
 
 # COLMAP dependencies
 RUN apt-get install -y --no-install-recommends --no-install-suggests \
