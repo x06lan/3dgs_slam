@@ -5,6 +5,13 @@ import time
 import numpy as np
 import threading
 import multiprocessing
+import os
+import shutil
+from PIL import Image
+
+import enlighten
+from pathlib import Path
+import pycolmap
 
 # import gaussian_cuda
 
@@ -17,80 +24,85 @@ def log_info(data):
     while True:
         data.require()
 
-        if (data.change):
+        if data.change:
             print(data.width, data.height, data.change)
             data.change = False
-
         data.release()
 
         time.sleep(1)
 
 
-class Tracker():
+class Tracker:
     def __init__(self, data):
         self.shareData: ViewerData = data
-        self.camera = None
-        self.vo = None
+        # self.camera = None
         self.img_id = 0
-
-    def create_vo(self):
-        # num_features = 1000  # how many features do you want to detect and track?
-        # tracker_config = FeatureTrackerConfigs.LK_FAST
-        # tracker_config["num_features"] = num_features
-        # feature_tracker = feature_tracker_factory(**tracker_config)
-        width = self.shareData.width
-        height = self.shareData.height
-        self.camera = Camera(width=width, height=height, cx=width/2,
-                             cy=height/2, fx=width/2, fy=height/2, distortParams=[0, 0, 0, 0, 0], fps=30)
-        # self.vo = VisualOdometry(self.camera, feature_tracker, None)
+        self.is_recording = True
 
     def run(self):
+        if os.path.exists("./record_images"):
+            shutil.rmtree("./record_images")
+        os.mkdir("./record_images")
 
         while True:
-            if (self.vo is None and self.shareData.width > 0 and self.shareData.height > 0):
-                self.create_vo()
-
-            if (self.vo is not None):
-
+            if self.is_recording:
                 self.shareData.require()
-                # print(self.data.width, self.data.height, self.data.image_update)
-
-                if (self.shareData.image_update):
+                if self.shareData.image_update:
                     image = self.shareData.image
                     self.shareData.image_update = False
-                    self.vo.track(image, self.img_id)
 
-                    if (len(self.vo.traj3d_est) > 0):
-                        t = self.vo.traj3d_est[-1].T[0]
-                        self.shareData.position[0] = float(t[0])
-                        self.shareData.position[1] = float(t[1])
-                        self.shareData.position[2] = float(t[2])
-                        # print(t)
+                    image_file = Image.fromarray(image)
+                    image_file.save(f"./record_images/{self.img_id}.jpg")
+                    self.img_id += 1
 
                 self.shareData.release()
-                self.img_id += 1
+            else:
+                run_colmap("./record_images", "./colmap_output")
+                break
             time.sleep(0.1)
 
 
+def run_colmap(image_dir, output_dir):
+    output_path = Path(output_dir)
+    image_path = Path(image_dir)
+    sfm_path = output_path / "sfm"
+    database_path = output_path / "database.db"
+
+    output_path.mkdir(exist_ok=True)
+    if database_path.exists():
+        database_path.unlink()
+    pycolmap.extract_features(database_path, image_path)
+    pycolmap.match_exhaustive(database_path)
+    num_images = pycolmap.Database(database_path).num_images
+
+    pycolmap.incremental_mapping(database_path, image_path, sfm_path)
+    # with enlighten.Manager() as manager:
+    #     with manager.counter(total=num_images, desc="Images registered:") as pbar:
+    #         pbar.update(0, force=True)
+    #         recs = pycolmap.incremental_mapping(
+    #             database_path,
+    #             image_path,
+    #             sfm_path,
+    #             initial_image_pair_callback=lambda: pbar.update(2),
+    #             next_image_callback=lambda: pbar.update(1),
+    #         )
+
+
 if __name__ == "__main__":
+    run_colmap("./record_images", "./colmap_output1")
+    # data = ViewerData()
+    # viewer = Viewer(data=data)
+    # tracker = Tracker(data)
 
-    vo = None
+    # viewer_thread = multiprocessing.Process(target=viewer.run, args=("0.0.0.0", 6969))
+    # # log_thread = multiprocessing.Process(
+    # #     target=log_info, args=(data,))
+    # tracker_thread = multiprocessing.Process(target=tracker.run, args=())
 
-    data = ViewerData()
-    viewer = Viewer(data=data)
-    tracker = Tracker(data)
+    # viewer_thread.start()
+    # tracker_thread.start()
+    # # log_thread.start()
 
-    viewer_thread = multiprocessing.Process(
-        target=viewer.run, args=("0.0.0.0", 8000))
-    # log_thread = multiprocessing.Process(
-    #     target=log_info, args=(data,))
-    tracker_thread = multiprocessing.Process(
-        target=tracker.run, args=())
-
-    viewer_thread.start()
-    tracker_thread.start()
-    # log_thread.start()
-
-    viewer_thread.join()
-    tracker_thread.join()
-    # log_thread.join()
+    # viewer_thread.join()
+    # tracker_thread.join()
+    # # log_thread.join()

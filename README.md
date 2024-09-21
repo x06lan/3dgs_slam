@@ -38,3 +38,9 @@ docker compose
 docker-compose up -d
 docker exec -it 3dgs_slam bash    
 ```
+
+
+docker build -t 3dgs .
+docker run -it -e -v /tmp/.X11-unix:/tmp/.X11-unix -v ./:/app --privileged --gpus all --name 3dgs 3dgs bash
+docker container start 3dgs
+docker exec -it 3dgs bash
