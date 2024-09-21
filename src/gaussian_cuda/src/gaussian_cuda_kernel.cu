@@ -537,8 +537,8 @@ __global__ void draw_backward_kernel(
     uint32_t global_idx;
     
     //output gradient
-    output += (id_x + id_y * w) * 3;
-    grad_output += (id_x + id_y * w) * 3;
+    output += (id_x + id_y * w) * 5;
+    grad_output += (id_x + id_y * w) * 5;
     float cur_grad_out[3];
     float cur_out[3];
     #pragma unroll
@@ -838,7 +838,7 @@ __global__ void draw_kernel(
     //draw: access all point with early stop
     float pixel_x = (id_x + 0.5 - w/2)/focal_x;
     float pixel_y = (id_y + 0.5 - h/2)/focal_y;
-    float color[] = {0, 0, 0};
+    float color[] = {0, 0, 0, 0};
     float accum = 1.0;
     float accum_weight = 0.0;
 
@@ -860,7 +860,7 @@ __global__ void draw_kernel(
         calc_sh(9, current_dir, SH);
     }
 
-    __shared__ float _gaussian_pos[SMSIZE*2];
+    __shared__ float _gaussian_pos[SMSIZE*3];
     __shared__ float _gaussian_rgb_coeff[SMSIZE*D];
     __shared__ float _gaussian_opa[SMSIZE*1];
     __shared__ float _gaussian_cov[SMSIZE*4];
@@ -882,8 +882,9 @@ __global__ void draw_kernel(
             if(global_idx>=(end_idx - start_idx)){
                 break;
             }
-            _gaussian_pos[i*2 + 0] = gaussian_pos[(start_idx + i_loadings*SMSIZE + i)*3 + 0];
-            _gaussian_pos[i*2 + 1] = gaussian_pos[(start_idx + i_loadings*SMSIZE + i)*3 + 1];
+            _gaussian_pos[i*3 + 0] = gaussian_pos[(start_idx + i_loadings*SMSIZE + i)*3 + 0];
+            _gaussian_pos[i*3 + 1] = gaussian_pos[(start_idx + i_loadings*SMSIZE + i)*3 + 1];
+            _gaussian_pos[i*3 + 2] = gaussian_pos[(start_idx + i_loadings*SMSIZE + i)*3 + 2];
             // rgb
             #pragma unroll
             for(int _channel=0; _channel<D; ++_channel){
@@ -911,8 +912,9 @@ __global__ void draw_kernel(
             _b = _gaussian_cov[i*4+1];
             _c = _gaussian_cov[i*4+2];
             _d = _gaussian_cov[i*4+3];
-            _x = pixel_x - _gaussian_pos[i*2 + 0];
-            _y = pixel_y - _gaussian_pos[i*2 + 1];
+            _x = pixel_x - _gaussian_pos[i*3 + 0];
+            _y = pixel_y - _gaussian_pos[i*3 + 1];
+
             det = (_a * _d - _b * _c);
 
             current_prob = sigmoid ? 1.0/2*3.1415926536 * rsqrtf(det+1e-7) : 1;
@@ -954,6 +956,7 @@ __global__ void draw_kernel(
                 color[0] += _gaussian_rgb_coeff[i*3 + 0] * weight;
                 color[1] += _gaussian_rgb_coeff[i*3 + 1] * weight;
                 color[2] += _gaussian_rgb_coeff[i*3 + 2] * weight;
+                color[3] += _gaussian_pos[i*3 + 2] * weight;
             }
 
             accum_weight += weight;
@@ -964,9 +967,18 @@ __global__ void draw_kernel(
     if(accum_weight < 0.01 || !weight_normalize){
         accum_weight = 1;
     }
-    res[(id_x + id_y * w)*3 + 0] = color[0] / accum_weight;
-    res[(id_x + id_y * w)*3 + 1] = color[1] / accum_weight;
-    res[(id_x + id_y * w)*3 + 2] = color[2] / accum_weight;
+    int id =(id_x + id_y * w)*5;
+
+    res[id + 0] = color[0] / accum_weight;
+    res[id + 1] = color[1] / accum_weight;
+    res[id + 2] = color[2] / accum_weight;
+
+    // alpha channel
+    res[id + 3] =1.0- accum / accum_weight;
+
+
+    // depth channel
+    res[id + 4] =color[3] / accum_weight;
 }
 
 // void draw(Gaussian3ds & tile_sorted_gaussians, torch::Tensor tile_n_point_accum, torch::Tensor res, float focal_x, float focal_y){
@@ -994,10 +1006,11 @@ void draw(
     uint32_t gridsize_y = DIV_ROUND_UP(h, 16);
     dim3 gridsize(gridsize_x, gridsize_y, 1);
     dim3 blocksize(16, 16, 1);
-    uint32_t SMSIZE;
-    SMSIZE = use_sh_coeff ? 340 : 1200;
+    // uint32_t SMSIZE;
+    // SMSIZE = use_sh_coeff ? 340 : 1200;
+    // SMSIZE = 1200;
     if(use_sh_coeff){
-        draw_kernel<340, float, 27><<<gridsize, blocksize>>>(
+        draw_kernel<300, float, 27><<<gridsize, blocksize>>>(
             gaussian_pos.data_ptr<float>(),
             gaussian_rgb.data_ptr<float>(),
             gaussian_opa.data_ptr<float>(),
@@ -1019,7 +1032,7 @@ void draw(
         );
     }
     else{
-        draw_kernel<1200, float, 3><<<gridsize, blocksize>>>(
+        draw_kernel<1024, float, 3><<<gridsize, blocksize>>>(
             gaussian_pos.data_ptr<float>(),
             gaussian_rgb.data_ptr<float>(),
             gaussian_opa.data_ptr<float>(),

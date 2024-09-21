@@ -1,6 +1,6 @@
 services:
   3dgs_slam:
-    image: 3dgs_slam:0.3.0
+    image: 3dgs_slam:0.4.0
     container_name: 3dgs_slam
     environment:
       - DISPLAY=${DISPLAY}

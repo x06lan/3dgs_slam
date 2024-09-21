@@ -16,6 +16,7 @@ from aiohttp import web
 from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaBlackhole, MediaPlayer, MediaRecorder, MediaRelay
 from av import VideoFrame
+import ipdb
 
 
 class ViewerData:
@@ -28,46 +29,81 @@ class ViewerData:
         self.smm.start()
 
         self.lock = multiprocessing.Lock()
-        self.image_raw = self.smm.SharedMemory(size=image.nbytes)
+        self.recive_image_raw = self.smm.SharedMemory(size=image.nbytes)
+        self.render_image_raw = self.smm.SharedMemory(size=image.nbytes)
 
         # dara =[width, height, is_updated]
-        self.datas = self.smm.ShareableList([-1, -1, False])
+        self.datas = self.smm.ShareableList([-1, -1, 100, 100, False, False])
         self.position = self.smm.ShareableList([0.0, 0.0, 0.0])
         self.rotation = self.smm.ShareableList([0.0, 0.0, 0.0])
 
     @property
-    def image(self):
-        return np.ndarray((self.datas[1], self.datas[0], 3), dtype=np.uint8, buffer=self.image_raw.buf)
+    def recive_image(self):
+        return np.ndarray((self.datas[1], self.datas[0], 3), dtype=np.uint8, buffer=self.recive_image_raw.buf)
 
     @property
-    def width(self):
+    def render_image(self):
+        return np.ndarray((self.datas[3], self.datas[2], 3), dtype=np.uint8, buffer=self.render_image_raw.buf)
+
+    @property
+    def recive_width(self):
         return self.datas[0]
 
-    @width.setter
-    def width(self, value):
+    @recive_width.setter
+    def recive_width(self, value):
         self.datas[0] = value
 
     @property
-    def height(self):
+    def recive_height(self):
         return self.datas[1]
 
-    @height.setter
-    def height(self, value):
+    @recive_height.setter
+    def recive_height(self, value):
         self.datas[1] = value
 
     @property
-    def image_update(self):
+    def render_width(self):
         return self.datas[2]
+
+    @render_width.setter
+    def render_width(self, value):
+        self.datas[2] = value
+
+    @property
+    def render_height(self):
+        return self.datas[3]
+
+    @render_height.setter
+    def render_height(self, value):
+        self.datas[3] = value
+
+    @property
+    def image_update(self):
+        return self.datas[4]
 
     @image_update.setter
     def image_update(self, value):
-        self.datas[2] = value
+        self.datas[4] = value
+
+    @property
+    def transform_update(self):
+        return self.datas[5]
+
+    @transform_update.setter
+    def transform_update(self, value):
+        self.datas[5] = value
 
     def require(self):
         self.lock.acquire()
 
     def release(self):
         self.lock.release()
+
+    def __enter__(self):
+        self.require()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.release()
 
 
 ROOT = os.path.dirname(__file__)
@@ -91,22 +127,30 @@ class VideoTransformTrack(MediaStreamTrack):
         self.shareData = data
 
     async def recv(self):
-        frame = await self.track.recv()
+        frame: VideoFrame = await self.track.recv()
         img = frame.to_ndarray(format="bgr24")
 
+        # with self.shareData:
         self.shareData.require()
-
-        if (self.shareData.width != img.shape[1] or self.shareData.height != img.shape[0]):
-            # setting width and height
-            self.shareData.width = img.shape[1]
-            self.shareData.height = img.shape[0]
-
         self.shareData.image_update = True
-        share_image = self.shareData.image
-        share_image[:] = img[:]
 
+        if (self.shareData.recive_width != img.shape[1] or self.shareData.recive_height != img.shape[0]):
+            # setting width and height
+            self.shareData.recive_width = img.shape[1]
+            self.shareData.recive_height = img.shape[0]
+
+        send_back_image = self.shareData.render_image
         self.shareData.release()
-        return frame
+
+        send_back_image = VideoFrame.from_ndarray(
+            send_back_image, format="rgb24")
+
+        send_back_image.pts = frame.pts
+        send_back_image.time_base = frame.time_base
+        # print("send_back_image")
+
+        return send_back_image
+        # return frame
 
 
 class Viewer:
@@ -155,11 +199,26 @@ class Viewer:
 
         @pc.on("datachannel")
         def on_datachannel(channel):
+
             @channel.on("message")
             def on_message(message):
                 if isinstance(message, str):
+                    info = json.loads(message)
+                    self.shareData.require()
+                    self.transform_update = True
+
+                    self.shareData.position[0] = 0
+                    self.shareData.position[1] = 0
+                    self.shareData.position[2] = 0
+
+                    self.shareData.rotation[0] = info["rotation"][0]
+                    self.shareData.rotation[1] = info["rotation"][1]
+                    self.shareData.rotation[2] = info["rotation"][2]
+
+                    # print("rotation:", info["rotation"])
+
+                    self.shareData.release()
                     position = f"{self.shareData.position[0]},{self.shareData.position[1]},{self.shareData.position[2]}"
-                    # print(f"position: {position}")
                     channel.send(position)
 
         @pc.on("connectionstatechange")

@@ -17,7 +17,7 @@ class Tiles:
         self.padded_height: int = int(
             math.ceil(self.height/self.tile_size)) * self.tile_size
         self.focal_x: float = focal_x
-        self.focal_y = focal_y
+        self.focal_y:float = focal_y
         self.n_tile_x: float = self.padded_width // self.tile_size
         self.n_tile_y: float = self.padded_height // self.tile_size
         self.device = device

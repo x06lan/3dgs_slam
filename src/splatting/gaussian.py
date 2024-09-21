@@ -2,38 +2,37 @@
 import torch
 import torch.nn as nn
 import gaussian_cuda
-import renderer
+
+from .renderer import trunc_exp
 from utils import function
 
 EPS = 1e-6
 
 
 class Gaussians(nn.Module):
-    def __init__(self, pos, rgb, opacty, scale=None, quaternion=None, covariance=None, init_value=False):
+    def __init__(self, pos, rgb, opacty, scale=None, quaternion=None, covariance=None, init_value=False, device=None):
 
         super(Gaussians, self).__init__()
 
-        self.init_value = init_value
+        if device is None:
+            self.device = torch.device("cuda")
+        else:
+            self.device = device
 
         if init_value:
 
-            self.pos = nn.parameter.Parameter(pos)
-            self.rgb = nn.parameter.Parameter(rgb)
-            self.opacity = nn.parameter.Parameter(opacty)
-            self.scale = scale if scale is None else nn.parameter.Parameter(
-                scale)
-            self.quaternion = quaternion if quaternion is None else nn.parameter.Parameter(
-                quaternion)
-            self.covariance = covariance if covariance is None else nn.parameter.Parameter(
-                covariance)
-        else:
-            # self.pos = nn.parameter.Parameter(pos)
-            # self.rgb = nn.parameter.Parameter(rgb)
-            # self.opacity = nn.parameter.Parameter(opacty)
-            # self.scale = nn.parameter.Parameter(scale)
-            # self.quaternion = nn.parameter.Parameter(quaternion)
-            # self.covariance = nn.parameter.Parameter(covariance)
+            def setup(v): return v.to(torch.float32).to(self.device)
 
+            self.pos = nn.parameter.Parameter(setup(pos))
+            self.rgb = nn.parameter.Parameter(setup(rgb))
+            self.opacity = nn.parameter.Parameter(setup(opacty))
+            self.scale = scale if scale is None else nn.parameter.Parameter(setup(
+                scale))
+            self.quaternion = quaternion if quaternion is None else nn.parameter.Parameter(setup(
+                quaternion))
+            self.covariance = covariance if covariance is None else nn.parameter.Parameter(setup(
+                covariance))
+        else:
             self.pos = pos
             self.rgb = rgb
             self.opacity = opacty
@@ -41,20 +40,44 @@ class Gaussians(nn.Module):
             self.quaternion = quaternion
             self.covariance = covariance
 
+    @property
+    def shape(self):
+        return self.pos.shape[:2]
+
+    def __len__(self):
+        return self.pos.shape[0]
+
+    def append(self, other):
+        assert self.quaternion is not None and self.scale is not None
+        self.pos = nn.parameter.Parameter(
+            torch.cat([self.pos, other.pos]), requires_grad=True)
+        self.rgb = nn.parameter.Parameter(torch.cat([self.rgb, other.rgb]))
+        self.opacity = nn.parameter.Parameter(
+            torch.cat([self.opacity, other.opacity]))
+        self.scale = nn.parameter.Parameter(
+            torch.cat([self.scale, other.scale]))
+
+        self.quaternion = nn.parameter.Parameter(torch.cat(
+            [self.quaternion, other.quaternion]))
+
     def scale_matrix(self):
+        assert self.scale is not None
         return torch.diag_embed(self.scale)
 
     def normalize_scale(self):
+        assert self.scale is not None
+
         scale_activation = "abs"
         if scale_activation == "abs":
             return self.scale.abs()+EPS
         elif scale_activation == "exp":
-            return renderer.trunc_exp(self.scale)
+            return trunc_exp(self.scale)
         else:
             print("No support scale activation")
             exit()
 
     def normalize_quaternion(self):
+        assert self.quaternion is not None
         normed_quat = (self.quaternion /
                        self.quaternion.norm(dim=1, keepdim=True))
         return normed_quat
@@ -99,11 +122,14 @@ class Gaussians(nn.Module):
             self.covariance.to(*args, **kwargs)
 
     def get_gaussian_3d_cov(self, scale_activation="abs"):
+
+        assert self.quaternion is not None and self.scale is not None
+
         R = function.q2r(self.quaternion)
         if scale_activation == "abs":
             _scale = self.scale.abs()+EPS
         elif scale_activation == "exp":
-            _scale = renderer.turn_exp(self.scale)
+            _scale = turn_exp(self.scale)
         else:
             print("No support scale activation")
             exit()

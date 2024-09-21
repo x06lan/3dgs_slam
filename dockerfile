@@ -41,7 +41,7 @@ RUN DEBIAN_FRONTEND=noninteractive  apt install -y \
 
 # Install python packages
 
-RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+RUN pip3 install torch torchvision torchaudio xformers --index-url https://download.pytorch.org/whl/cu118
 
 
 
