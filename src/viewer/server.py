@@ -99,10 +99,10 @@ class ViewerData:
     def release(self):
         self.lock.release()
 
-    def __inter__(self):
+    def __enter__(self):
         self.require()
 
-    def __exit__(self):
+    def __exit__(self, exc_type, exc_value, traceback):
         self.release()
 
 
@@ -130,8 +130,8 @@ class VideoTransformTrack(MediaStreamTrack):
         frame: VideoFrame = await self.track.recv()
         img = frame.to_ndarray(format="bgr24")
 
+        # with self.shareData:
         self.shareData.require()
-
         self.shareData.image_update = True
 
         if (self.shareData.recive_width != img.shape[1] or self.shareData.recive_height != img.shape[0]):
@@ -139,20 +139,18 @@ class VideoTransformTrack(MediaStreamTrack):
             self.shareData.recive_width = img.shape[1]
             self.shareData.recive_height = img.shape[0]
 
-        # print("send render", img.shape)
-        # print("frame", send_back_image.shape)
         send_back_image = self.shareData.render_image
+        self.shareData.release()
 
         send_back_image = VideoFrame.from_ndarray(
             send_back_image, format="rgb24")
 
         send_back_image.pts = frame.pts
         send_back_image.time_base = frame.time_base
-        # print(send_back_image)
+        # print("send_back_image")
 
-        self.shareData.release()
-        # return send_back_image
         return send_back_image
+        # return frame
 
 
 class Viewer:
@@ -205,7 +203,6 @@ class Viewer:
             @channel.on("message")
             def on_message(message):
                 if isinstance(message, str):
-                    # print(f"position: {position}")
                     info = json.loads(message)
                     self.shareData.require()
                     self.transform_update = True

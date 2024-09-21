@@ -26,12 +26,12 @@ import ipdb
 
 
 class CoverSplatter(Splatter):
-    def __init__(self, init_points: Union[Point3D, dict, None] = None,  load_ckpt: Union[str, None] = None, downsample=1, use_sh_coeff=False):
+    def __init__(self, init_points: Union[Point3D, dict, None] = None,  load_ckpt: Union[str, None] = None, downsample=1, use_sh_coeff=False, distance=4):
 
         super(CoverSplatter, self).__init__(
             init_points, load_ckpt, downsample, use_sh_coeff)
 
-        self.distance: int = 8
+        self.distance: int = distance
         self.depth_estimator = Estimator()
         self.down_w, self.down_h = 0, 0
         self.coords: torch.Tensor
@@ -143,13 +143,13 @@ class CoverSplatter(Splatter):
             append_gaussian = gaussians.filte(add_mask)
 
         # scale < 0.1
-        del_mask = torch.norm(gaussians.scale, dim=-1) < 0.01
+        del_mask = torch.norm(gaussians.scale, dim=-1) < 0.001
         # scale > 100.0
         del_mask = torch.logical_or(
             del_mask, torch.norm(gaussians.scale, dim=-1) > 1000.0)
         # opacity < 0.001
         del_mask = torch.logical_or(
-            del_mask,  gaussians.opacity < 0.001)
+            del_mask,  gaussians.opacity < 0.0001)
 
         delete_count = torch.logical_not(del_mask).sum()
 
@@ -196,8 +196,8 @@ class CoverSplatter(Splatter):
             append_gaussian = self.cover_point(
                 image_info, ground_truth, scaled_depth, render_image, alpha_threshold=0.7)
 
-            # self.gaussians, status = self.adaption_control(
-            #     self.gaussians, grad_threshold=0.01)
+            self.gaussians, status = self.adaption_control(
+                self.gaussians, grad_threshold=0.01)
             # print(status)
 
             self.gaussians.append(append_gaussian)
@@ -301,7 +301,6 @@ if __name__ == "__main__":
         render_depth = maxmin_normalize(render_depth)
         render_depth = render_depth.repeat(1, 1, 3).float()
         image = render_depth
-        # image = render_image[:, :, :3]
         save_image("output.png", image)
 
         splatter.save_ckpt("3dgs_slam_ckpt.pth")

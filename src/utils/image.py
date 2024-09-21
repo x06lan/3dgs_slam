@@ -20,7 +20,7 @@ class BaseImageData:
 
 # @dataclass(frozen=True)
 class ImageInfo(BaseImageData):
-    def __init__(self, id, qvec, tvec, camera_id, name, xys):
+    def __init__(self, id: int = 0, qvec: torch.tensor = torch.tensor([0, 0, 0, 1]), tvec: torch.tensor = torch.tensor([0, 0, 0, 1]), camera_id: int = 0, name: str = "test", xys: torch.tensor = torch.tensor([0, 0])):
         super().__init__(id, qvec, tvec, camera_id, name, xys)
         pass
 

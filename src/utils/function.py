@@ -341,3 +341,15 @@ def resize_image(image, w, h, mode='bilinear'):
     image = image.squeeze(0).permute(1, 2, 0)
 
     return image
+
+
+def convert_z_up_to_y_up(quaternion):
+    w = quaternion[0]
+    x = quaternion[1]
+    y = quaternion[2]
+    z = quaternion[3]
+
+    quaternion[1] = z
+    quaternion[2] = -y
+    quaternion[3] = x
+    return quaternion

@@ -19,13 +19,13 @@ from utils.function import save_image, resize_image, normalize, maxmin_normalize
 
 
 class Trainer():
-    def __init__(self, ckpt: Union[str, None] = None, lr: float = 0.003, downsample: int = 4, camera: Camera = None):
+    def __init__(self, ckpt: Union[str, None] = None, lr: float = 0.003, downsample: int = 4, distance: int = 8, camera: Camera = None):
         self.lr = lr
 
         self.downsample = downsample
 
         self.splatter = CoverSplatter(
-            load_ckpt=ckpt, downsample=self.downsample)
+            load_ckpt=ckpt, downsample=self.downsample, distance=distance)
 
         if camera is not None:
             self.splatter.set_camera(camera)
@@ -45,7 +45,7 @@ class Trainer():
         return depth
 
     def critic(self, source, target):
-        ssim_weight = 0.5
+        ssim_weight = 0.7
 
         # map B,H,W,C to B,C,H,W
         ssim = self.ssim(source.unsqueeze(0).permute(
@@ -65,22 +65,22 @@ class Trainer():
             self.splatter.gaussians.parameters(), lr=self.lr, betas=(0.9, 0.99))
         self.optimizer.zero_grad()
 
-        if grad:
-            render_image, gt_depth = self.splatter(
-                image_info, ground_truth, cover)
-
-            # resize gt_depth to match render_image
-            if image_info.id not in self.depth_cache:
-
-                gt_depth = resize_image(
-                    gt_depth, render_image.shape[1], render_image.shape[0])
-
-                self.depth_cache[image_info.id] = gt_depth
-        else:
+        if not grad:
             with torch.no_grad():
                 render_image, gt_depth = self.splatter(
                     image_info, ground_truth, cover)
                 return render_image, {}
+        else:
+            render_image, gt_depth = self.splatter(
+                image_info, ground_truth, cover)
+
+            if gt_depth is not None and image_info.id not in self.depth_cache:
+
+                # resize gt_depth to match render_image
+                gt_depth = resize_image(
+                    gt_depth, render_image.shape[1], render_image.shape[0])
+
+                self.depth_cache[image_info.id] = gt_depth
 
         render_image_rgb = render_image[..., :3]
         ground_truth = ground_truth.to(self.splatter.device)
@@ -89,13 +89,15 @@ class Trainer():
         render_depth = self.depth_normalize(render_depth)
         render_depth = render_depth.unsqueeze(-1)
 
-        gt_depth = self.depth_cache[image_info.id].to(self.splatter.device)
-        gt_depth = self.depth_normalize(gt_depth)
-
-        depth_loss = self.critic(render_depth, gt_depth)
         rgb_loss = self.critic(render_image_rgb, ground_truth)
+        try:
+            gt_depth = self.depth_cache[image_info.id].to(self.splatter.device)
+            gt_depth = self.depth_normalize(gt_depth)
 
-        loss = rgb_loss + depth_loss*10.0
+            depth_loss = self.critic(render_depth, gt_depth)
+            loss = rgb_loss+depth_loss*10
+        except:
+            loss = rgb_loss
 
         dump = {
             "loss": loss.item(),
