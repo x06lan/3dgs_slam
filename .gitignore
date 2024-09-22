@@ -173,6 +173,7 @@ src/depth_estimator/depth_anything/checkpoints/*
 *.pth
 /bin
 
-colmap_output
-record_images
+record
+record_dataset
 ug_note.md
+output.jpg
