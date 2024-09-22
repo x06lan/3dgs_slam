@@ -144,7 +144,7 @@ class Tracker():
                             self.shareData.render_height = render_image.shape[0]
                         display_image = render_image[..., :3]
                     self.img_id += 1
-                save_image("output.jpg", display_image)
+                save_image("output.png", display_image)
                 # self.trainer.splatter.save("3dgs_slam_ckpt.pth")
                 # print("render", display_image.shape)
                 display_image = (display_image).detach().cpu().numpy()

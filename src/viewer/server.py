@@ -128,7 +128,8 @@ class VideoTransformTrack(MediaStreamTrack):
 
     async def recv(self):
         frame: VideoFrame = await self.track.recv()
-        img = frame.to_ndarray(format="bgr24")
+        # img = frame.to_ndarray(format="bgr24")
+        img = frame.to_ndarray(format="rgb24")
 
         # with self.shareData:
         self.shareData.require()
@@ -138,6 +139,8 @@ class VideoTransformTrack(MediaStreamTrack):
             # setting width and height
             self.shareData.recive_width = img.shape[1]
             self.shareData.recive_height = img.shape[0]
+        share_image = self.shareData.recive_image
+        share_image[:] = img[:]
 
         send_back_image = self.shareData.render_image
         self.shareData.release()
