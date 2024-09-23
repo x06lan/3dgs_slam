@@ -138,13 +138,16 @@ class Tracker():
                         grad = True
                         render_image, status = self.trainer.step(image_info=info,
                                                                  ground_truth=gt, cover=cover, grad=grad)
-                        print(i, info.id, status)
+                        # print(i, info.id, status)
                         if (self.shareData.render_width != render_image.shape[1] or self.shareData.render_height != render_image.shape[0]):
                             self.shareData.render_width = render_image.shape[1]
                             self.shareData.render_height = render_image.shape[0]
                         display_image = render_image[..., :3]
                     self.img_id += 1
-                save_image("output.png", display_image)
+                recive_image = self.shareData.recive_image
+                print("recive", recive_image.shape)
+                save_image("output.png", recive_image)
+
                 # self.trainer.splatter.save("3dgs_slam_ckpt.pth")
                 # print("render", display_image.shape)
                 display_image = (display_image).detach().cpu().numpy()
