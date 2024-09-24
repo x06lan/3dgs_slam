@@ -36,7 +36,11 @@
         height: auto; */
         width: 100%;
         height: 100%;
+        
         object-fit: contain;
+        /* object-fit:fill; */
+        /* object-fit: cover; */
+        object-position: 50% 0%; 
       }
 
       .gui-container {
@@ -47,20 +51,43 @@
         z-index: 10;
       }
 
-      @media (max-width: 768px) {
-        /* .gui-container { */
-          /* bottom: 10px; */
-          /* top: unset; */
-          /* left: 10px; */
-        /* }  */
+      .joy-stick{
+        position: absolute;
+        bottom: 50px;
+        left: 10%;
+        transform: translate(-50%, -50%);
+        width:200px;
+        height:200px;
+        margin-bottom:20px;
+        z-index: 10;
+      }
+
+      /* Styles for screens less than 1024px */
+      @media (max-width: 1023px) {
+          .joy-stick {
+              left: 50%; /* Center horizontally */
+              transform: translate(-50%, 0); /* Center horizontally */
+          }
+      }
+
+      /* Styles for screens greater than or equal to 1024px */
+      @media (min-width: 1024px) {
+          .joy-stick {
+              left: 10%; /* Position on left */
+              transform: translate(0, 0); /* No translation needed */
+          }
       }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.7/dat.gui.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html5-joystick@2.0.0/joy.min.js"></script>
+
   </head>
 
   <body>
     <div id="container">
       <div id="controls" class="gui-container"></div>
+      <div id ="joyDiv" class="joy-stick"></div>
+
       <div id="media">
         <video id="video" controls autoplay loop muted>
           <source
@@ -74,12 +101,12 @@
           Your browser does not support the video tag.
         </video>
 
-        <div style="display: none">
+        <!-- <div style="display: none">
           <h2>State</h2>
           <p>ICE gathering state: <span id="ice-gathering-state"></span></p>
           <p>ICE connection state: <span id="ice-connection-state"></span></p>
           <p>Signaling state: <span id="signaling-state"></span></p>
-        </div>
+        </div> -->
       </div>
     </div>
 
@@ -99,8 +126,14 @@
         videoEffect: "none",
         videoCodec: "Default",
         useStun: false,
+        useRotationSensor: false,
+        // preview: true,
+        preview: false,
+        downsample: 2,
+        grid: 8,
+        play:false,
         start: () => start(guiParams),
-        stop: () => stop(),
+        stop: () => stop(guiParams),
       };
       async function enumerateDevices(guiParams,folder1,folder2) {
         let device= await navigator.mediaDevices.enumerateDevices()
@@ -129,8 +162,12 @@
       document.querySelector("#controls").appendChild(gui.domElement);
       gui.domElement.classList.add("gui-container");
 
+      let joyParam = { "title": "joystick", "autoReturnToCenter": true };
+      let joy = new JoyStick('joyDiv', joyParam);
+
       // DataChannel Controls
-      const dataChannelFolder = gui.addFolder("Data Channel");
+      const controlsFolder = gui.addFolder("Controls");
+      const dataChannelFolder = controlsFolder.addFolder("Data Channel");
       dataChannelFolder
         .add(guiParams, "useDataChannel")
         .name("Use datachannel");
@@ -144,12 +181,9 @@
         .name("Data Channel Parameters");
 
       // Audio Controls
-      const audioFolder = gui.addFolder("Audio");
+      const audioFolder = controlsFolder.addFolder("Audio");
       audioFolder.add(guiParams, "useAudio").name("Use audio");
     
-    //   audioFolder
-    //     .add(guiParams, "audioDevice", {"Default device":0})
-    //     .name("Audio Input");
       audioFolder
         .add(guiParams, "audioCodec", [
           "Default",
@@ -161,11 +195,8 @@
       audioFolder.hide()
 
       // Video Controls
-      const videoFolder = gui.addFolder("Video");
+      const videoFolder = controlsFolder.addFolder("Video");
       videoFolder.add(guiParams, "useVideo").name("Use video");
-    //   videoFolder
-    //     .add(guiParams, "videoDevice", ["Default device"])
-    //     .name("Video Input");
       videoFolder
         .add(guiParams, "videoResolution", [
           "Default resolution",
@@ -189,26 +220,25 @@
 
       enumerateDevices(guiParams,videoFolder,audioFolder)
       // STUN Controls
-      gui.add(guiParams, "useStun").name("Use STUN server");
+      controlsFolder.add(guiParams, "useStun").name("Use STUN server");
 
+      gui.add(guiParams, "preview").name("Preview").onChange((value) => {
+        if (!guiParams.useRotationSensor && value){
+          document.getElementById("joyDiv").style.display = !value ? "block" : "none";
+        }
+      });
+      gui.add(guiParams, "useRotationSensor").name("Use rotation sensor").onChange((value) => {
+
+        if (guiParams.preview && !value){
+          document.getElementById("joyDiv").style.display = !value ? "block" : "none";
+        }
+      });
+      gui.add(guiParams, "grid", [4,8,16,32,64])
+      gui.add(guiParams, "downsample", [1,2,4,8])
       // Start/Stop Buttons
       gui.add(guiParams, "start").name("Start");
       gui.add(guiParams, "stop").name("Stop");
 
-      // Functions for Start/Stop buttons
-    //   function start() {
-    //     console.log("Starting with params:", guiParams);
-    //     document.getElementById("videoinput").play();
-    //     document.getElementById("stop").style.display = "block";
-    //     document.getElementById("start").style.display = "none";
-    //   }
-
-    //   function stop() {
-    //     console.log("Stopping...");
-    //     document.getElementById("videoinput").pause();
-    //     document.getElementById("stop").style.display = "none";
-    //     document.getElementById("start").style.display = "block";
-    //   }
     </script>
     <script src="client.js"></script>
   </body>

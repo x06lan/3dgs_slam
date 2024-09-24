@@ -33,7 +33,8 @@ class ViewerData:
         self.render_image_raw = self.smm.SharedMemory(size=image.nbytes)
 
         # dara =[width, height, is_updated]
-        self.datas = self.smm.ShareableList([-1, -1, 100, 100, False, False])
+        self.datas = self.smm.ShareableList(
+            [-1, -1, 100, 100, False, False, False, 8, False, 2])
         self.position = self.smm.ShareableList([0.0, 0.0, 0.0])
         self.rotation = self.smm.ShareableList([0.0, 0.0, 0.0])
 
@@ -92,6 +93,38 @@ class ViewerData:
     @transform_update.setter
     def transform_update(self, value):
         self.datas[5] = value
+
+    @property
+    def play(self):
+        return self.datas[6]
+
+    @play.setter
+    def play(self, value):
+        self.datas[6] = value
+
+    @property
+    def grid(self):
+        return self.datas[7]
+
+    @grid.setter
+    def grid(self, value):
+        self.datas[7] = value
+
+    @property
+    def preview(self):
+        return self.datas[8]
+
+    @preview.setter
+    def preview(self, value):
+        self.datas[8] = value
+
+    @property
+    def downsample(self):
+        return self.datas[9]
+
+    @downsample.setter
+    def downsample(self, value):
+        self.datas[9] = value
 
     def require(self):
         self.lock.acquire()
@@ -207,7 +240,9 @@ class Viewer:
             def on_message(message):
                 if isinstance(message, str):
                     info = json.loads(message)
+
                     self.shareData.require()
+
                     self.transform_update = True
 
                     self.shareData.position[0] = 0
@@ -218,11 +253,16 @@ class Viewer:
                     self.shareData.rotation[1] = info["rotation"][1]
                     self.shareData.rotation[2] = info["rotation"][2]
 
-                    # print("rotation:", info["rotation"])
+                    self.shareData.grid = info["grid"]
+                    self.shareData.play = info["play"]
+                    self.shareData.preview = info["preview"]
 
                     self.shareData.release()
-                    position = f"{self.shareData.position[0]},{self.shareData.position[1]},{self.shareData.position[2]}"
-                    channel.send(position)
+                    # data = json.dumps({"position": self.shareData.position})
+                    # print(data)
+                    # channel.send(data)
+                else:
+                    raise ValueError("Invalid message")
 
         @pc.on("connectionstatechange")
         async def on_connectionstatechange():
@@ -251,7 +291,18 @@ class Viewer:
             async def on_ended():
                 log_info("Track %s ended", track.kind)
                 await recorder.stop()
+        if params["preview"]:
+            # pc.addTrack()
+            # recorder.addTrack(MediaBlackhole())
 
+            # fake_track = MediaPlayer(os.path.join(
+            #     ROOT, "demo-instruct.wav")).audio
+            # pc.addTrack(
+            #     VideoTransformTrack(
+            #         relay.subscribe(), transform=params["video_transform"], data=self.shareData
+            #     )
+            # )
+            pass
         # handle offer
         await pc.setRemoteDescription(offer)
         await recorder.start()

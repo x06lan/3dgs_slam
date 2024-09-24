@@ -26,12 +26,12 @@ import ipdb
 
 
 class CoverSplatter(Splatter):
-    def __init__(self, init_points: Union[Point3D, dict, None] = None,  load_ckpt: Union[str, None] = None, downsample=1, use_sh_coeff=False, distance=4):
+    def __init__(self, init_points: Union[Point3D, dict, None] = None,  load_ckpt: Union[str, None] = None, downsample=1, use_sh_coeff=False, grid_downsample=4):
 
         super(CoverSplatter, self).__init__(
             init_points, load_ckpt, downsample, use_sh_coeff)
 
-        self.distance: int = distance
+        self.distance: int = grid_downsample
         self.depth_estimator = Estimator()
         self.down_w, self.down_h = 0, 0
         self.coords: torch.Tensor
@@ -196,8 +196,8 @@ class CoverSplatter(Splatter):
             append_gaussian = self.cover_point(
                 image_info, ground_truth, scaled_depth, render_image, alpha_threshold=0.7)
 
-            self.gaussians, status = self.adaption_control(
-                self.gaussians, grad_threshold=0.01)
+            # self.gaussians, status = self.adaption_control(
+            #     self.gaussians, grad_threshold=0.01)
             # print(status)
 
             self.gaussians.append(append_gaussian)

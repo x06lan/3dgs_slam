@@ -34,21 +34,6 @@ function createPeerConnection(useSTUN) {
 
     pc = new RTCPeerConnection(connection_config);
 
-    // register some listeners to help debugging
-    // pc.addEventListener('icegatheringstatechange', () => {
-    //     iceGatheringLog.textContent += ' -> ' + pc.iceGatheringState;
-    // }, false);
-    // iceGatheringLog.textContent = pc.iceGatheringState;
-
-    // pc.addEventListener('iceconnectionstatechange', () => {
-    //     iceConnectionLog.textContent += ' -> ' + pc.iceConnectionState;
-    // }, false);
-    // iceConnectionLog.textContent = pc.iceConnectionState;
-
-    // pc.addEventListener('signalingstatechange', () => {
-    //     signalingLog.textContent += ' -> ' + pc.signalingState;
-    // }, false);
-    // signalingLog.textContent = pc.signalingState;
 
     // connect audio / video
     pc.addEventListener('track', (evt) => {
@@ -98,7 +83,8 @@ function negotiate(config) {
             body: JSON.stringify({
                 sdp: offer.sdp,
                 type: offer.type,
-                video_transform: config.videoEffect
+                video_transform: config.videoEffect,
+                preview: config.preview,
             }),
             headers: {
                 'Content-Type': 'application/json'
@@ -118,6 +104,8 @@ function negotiate(config) {
 
 
 function start(config) {
+    // config.play = true;
+    guiParams.play = true;
 
     pc = createPeerConnection(config.useStun);
 
@@ -142,24 +130,33 @@ function start(config) {
         });
         dc.addEventListener('open', () => {
             // dataChannelLog.textContent += '- open\n';
+            // let toInt= (x) => { x? 1: 0}
             dcInterval = setInterval(() => {
 
                 let message = {
                     "time":current_stamp(),
                     "acceleration": currentTranslation,
                     "rotation": currentRotation,
+                    "downsample": guiParams.downsample,
+                    "grid": guiParams.grid,
+                    "preview": guiParams.preview,
+                    "play": guiParams.play,
                 };
                 // console.log(message)
+                // console.log(JSON.stringify(message))
+                // console.log(message["rotation"])
+
                 dc.send(JSON.stringify(message));
-                // dataChannelLog.textContent += '> ' + message + '\n';
             }, 10);
         });
         dc.addEventListener('message', (evt) => {
             // dataChannelLog.textContent += '< ' + evt.data + '\n';
-            let data = evt.data.split(',')
-            for (let i = 0; i < data.length && i < 3; i++) {
-                currentTranslation[i] = parseFloat(data[i])
-            }
+            // let data = evt.data.split(',')
+            let data = JSON.parse(evt.data)
+            console.log(data)
+            // for (let i = 0; i < data.length && i < 3; i++) {
+            //     currentTranslation[i] = parseFloat(data[i])
+            // }
 
         });
     }
@@ -182,7 +179,7 @@ function start(config) {
         constraints.audio = Object.keys(audioConstraints).length ? audioConstraints : true;
     }
 
-    if (config.useVideo) {
+    if (config.useVideo && !config.preview) {
         const videoConstraints = {};
 
         const device = config.videoDevice;
@@ -209,10 +206,7 @@ function start(config) {
 
     // Acquire media and start negociation.
 
-    if (constraints.audio || constraints.video) {
-        // if (constraints.video) {
-        //     document.getElementById('media').style.display = 'block';
-        // }
+    if (constraints.audio || constraints.video && !config.preview) {
         navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
             stream.getTracks().forEach((track) => {
                 pc.addTrack(track, stream);
@@ -224,12 +218,12 @@ function start(config) {
     } else {
         negotiate(config);
     }
-
-    // document.getElementById('stop').style.display = 'inline-block';
 }
 
-function stop() {
-    // document.getElementById('stop').style.display = 'none';
+function stop(config) {
+    // config.play = false;
+    guiParams.play = false;
+    
 
     // close data channel
     if (dc) {
