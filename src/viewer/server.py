@@ -146,22 +146,20 @@ pcs = set()
 relay = MediaRelay()
 
 
-class VideoTransformTrack(MediaStreamTrack):
+class TrainRenderTrack(MediaStreamTrack):
     """
     A video stream track that transforms frames from an another track.
     """
 
     kind = "video"
 
-    def __init__(self, track, transform, data: ViewerData):
+    def __init__(self, track, data: ViewerData):
         super().__init__()  # don't forget this!
         self.track = track
-        self.transform = transform
         self.shareData = data
 
     async def recv(self):
         frame: VideoFrame = await self.track.recv()
-        # img = frame.to_ndarray(format="bgr24")
         img = frame.to_ndarray(format="rgb24")
 
         # with self.shareData:
@@ -169,7 +167,6 @@ class VideoTransformTrack(MediaStreamTrack):
         self.shareData.image_update = True
 
         if (self.shareData.recive_width != img.shape[1] or self.shareData.recive_height != img.shape[0]):
-            # setting width and height
             self.shareData.recive_width = img.shape[1]
             self.shareData.recive_height = img.shape[0]
         share_image = self.shareData.recive_image
@@ -183,10 +180,37 @@ class VideoTransformTrack(MediaStreamTrack):
 
         send_back_image.pts = frame.pts
         send_back_image.time_base = frame.time_base
-        # print("send_back_image")
 
         return send_back_image
         # return frame
+
+
+class RenderTrack(MediaStreamTrack):
+    """
+    A video stream track that transforms frames from an another track.
+    """
+
+    kind = "video"
+
+    def __init__(self, track, data: ViewerData):
+        super().__init__()  # don't forget this!
+        self.track = track
+        self.shareData = data
+
+    async def recv(self):
+        pts, time_base = await self.track.next_timestamp()
+        self.shareData.require()
+        send_back_image = self.shareData.render_image
+        self.shareData.release()
+
+        send_back_image = VideoFrame.from_ndarray(
+            send_back_image, format="rgb24")
+
+        send_back_image.pts = pts
+        send_back_image.time_base = time_base
+        # print("send_back_image")
+
+        return send_back_image
 
 
 class Viewer:
@@ -245,9 +269,9 @@ class Viewer:
 
                     self.transform_update = True
 
-                    self.shareData.position[0] = 0
-                    self.shareData.position[1] = 0
-                    self.shareData.position[2] = 0
+                    self.shareData.position[0] = info["acceleration"][0]
+                    self.shareData.position[1] = info["acceleration"][1]
+                    self.shareData.position[2] = info["acceleration"][2]
 
                     self.shareData.rotation[0] = info["rotation"][0]
                     self.shareData.rotation[1] = info["rotation"][1]
@@ -258,6 +282,8 @@ class Viewer:
                     self.shareData.preview = info["preview"]
 
                     self.shareData.release()
+
+                    # print(self.shareData.position)
                     # data = json.dumps({"position": self.shareData.position})
                     # print(data)
                     # channel.send(data)
@@ -274,34 +300,26 @@ class Viewer:
         @pc.on("track")
         def on_track(track):
             log_info("Track %s received", track.kind)
-
+            print(track.kind)
             if track.kind == "audio":
                 # pc.addTrack(player.audio)
-                recorder.addTrack(track)
-            elif track.kind == "video":
                 pc.addTrack(
-                    VideoTransformTrack(
-                        relay.subscribe(track), transform=params["video_transform"], data=self.shareData
+                    RenderTrack(
+                        relay.subscribe(track), data=self.shareData
                     )
                 )
-                # if args.record_to:
-                #     recorder.addTrack(relay.subscribe(track))
+                pass
+            elif track.kind == "video":
+                pc.addTrack(
+                    TrainRenderTrack(
+                        relay.subscribe(track), data=self.shareData
+                    )
+                )
 
             @ track.on("ended")
             async def on_ended():
                 log_info("Track %s ended", track.kind)
                 await recorder.stop()
-        if params["preview"]:
-            # pc.addTrack()
-            # recorder.addTrack(MediaBlackhole())
-
-            # fake_track = MediaPlayer(os.path.join(
-            #     ROOT, "demo-instruct.wav")).audio
-            # pc.addTrack(
-            #     VideoTransformTrack(
-            #         relay.subscribe(), transform=params["video_transform"], data=self.shareData
-            #     )
-            # )
             pass
         # handle offer
         await pc.setRemoteDescription(offer)

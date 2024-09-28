@@ -126,11 +126,12 @@
         videoEffect: "none",
         videoCodec: "Default",
         useStun: false,
-        useRotationSensor: false,
-        // preview: true,
-        preview: false,
+        useRotationSensor: true,
+        preview: true,
+        // preview: false,
         downsample: 2,
         grid: 8,
+        speed:1.0,
         play:false,
         start: () => start(guiParams),
         stop: () => stop(guiParams),
@@ -204,6 +205,7 @@
           "640x480",
           "960x540",
           "1280x720",
+          "1920x1080",
         ])
         .name("Video Resolution");
       videoFolder
@@ -223,21 +225,23 @@
       controlsFolder.add(guiParams, "useStun").name("Use STUN server");
 
       gui.add(guiParams, "preview").name("Preview").onChange((value) => {
-        if (!guiParams.useRotationSensor && value){
-          document.getElementById("joyDiv").style.display = !value ? "block" : "none";
-        }
+        let display = value 
+        document.getElementById("joyDiv").style.display = display? "block" : "none";
       });
       gui.add(guiParams, "useRotationSensor").name("Use rotation sensor").onChange((value) => {
-
-        if (guiParams.preview && !value){
-          document.getElementById("joyDiv").style.display = !value ? "block" : "none";
-        }
+        // let display = !value && guiParams.preview;
+        // document.getElementById("joyDiv").style.display = display? "block" : "none";
       });
       gui.add(guiParams, "grid", [4,8,16,32,64])
       gui.add(guiParams, "downsample", [1,2,4,8])
+      gui.add(guiParams, "speed", 1.0, 100).step(1)
       // Start/Stop Buttons
       gui.add(guiParams, "start").name("Start");
       gui.add(guiParams, "stop").name("Stop");
+
+      let display = guiParams.preview ;
+      document.getElementById("joyDiv").style.display = display? "block" : "none";
+
 
     </script>
     <script src="client.js"></script>
