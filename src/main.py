@@ -81,7 +81,7 @@ class Tracker:
         self.dataset_distance = 8
         self.dataset_ckpt = None  # "3dgs_slam_ckpt.pth"
 
-        self.state = "record"  # record, train, test
+        self.state = "train"  # record, colmap, train, test
 
         self.shareData: ViewerData = data
         self.datamanager = DataManager(batch=self.datamanager_batch, stride=self.datamanager_stride)
@@ -92,6 +92,7 @@ class Tracker:
         if os.path.exists(self.record_dir):
             shutil.rmtree(self.record_dir)
         os.makedirs(self.record_dir)
+        os.makedirs(self.record_dir + "/images")
 
     def load_dataset(self):
         self.dataset = ColmapDataset(self.dataset_dir, downsample_factor=self.dataset_downsample)
@@ -107,10 +108,10 @@ class Tracker:
         init = False
         while True:
             if not init:
-                # self.load_dataset()
-                # self.setup_trainer()
-                if self.clear_record_dir:
-                    self.clear_record_dir()
+                self.load_dataset()
+                self.setup_trainer()
+                # if self.clear_record_dir:
+                # self.clear_record_dir()
                 init = True
 
             if self.shareData.recive_width <= 0 or self.shareData.recive_height <= 0:
@@ -124,6 +125,9 @@ class Tracker:
                     recive_image = self.shareData.recive_image
                     self.record(recive_image)
                 # self.shareData.release()
+
+            elif self.state == "colmap":
+                self.run_colmap()
 
             elif self.state == "train" or self.state == "test":
                 self.shareData.require()
@@ -159,7 +163,7 @@ class Tracker:
         print("colmap done")
 
     def record(self, image):
-        print("recive", image.shape)
+        print(f"{self.record_count} recive {image.shape}")
         # save_image("output.png", image)
         save_image(f"{self.record_dir}/images/{self.record_count}.png", image)
         self.record_count += 1
@@ -202,37 +206,40 @@ class Tracker:
                     self.shareData.render_height = render_image.shape[0]
                 display_image = render_image[..., :3]
             self.img_id += 1
+            # self.trainer.splatter.save_ckpt("3dgs_slam_ckpt.pth")
         return display_image
 
 
 def test():
-    # downsample_imags("./record_dataset/images", 4)
+    # downsample_imags("./record/images", 4)
     data = ViewerData()
     tracker = Tracker(data)
-    tracker.load_dataset()
-    tracker.setup_trainer()
-    while True:
-        image = tracker.run_gaussian()
-        save_image("output.jpg", image)
+    tracker.run_colmap()
+    # tracker.load_dataset()
+    # tracker.setup_trainer()
+    # while True:
+    #     image = tracker.run_gaussian()
+    #     save_image("output.jpg", image)
+    pass
 
 
 if __name__ == "__main__":
-    # test()
+    test()
 
-    data = ViewerData()
-    viewer = Viewer(data=data)
-    tracker = Tracker(data)
+    # data = ViewerData()
+    # viewer = Viewer(data=data)
+    # tracker = Tracker(data)
 
-    close_port(8000)
-    viewer_thread = multiprocessing.Process(target=viewer.run, args=("0.0.0.0", 8000))
-    tracker_thread = multiprocessing.Process(target=tracker.run, args=())
-    # log_thread = multiprocessing.Process(
-    #     target=log_info, args=(data,))
+    # close_port(8000)
+    # viewer_thread = multiprocessing.Process(target=viewer.run, args=("0.0.0.0", 8000))
+    # tracker_thread = multiprocessing.Process(target=tracker.run, args=())
+    # # log_thread = multiprocessing.Process(
+    # #     target=log_info, args=(data,))
 
-    viewer_thread.start()
-    tracker_thread.start()
-    # log_thread.start()
+    # viewer_thread.start()
+    # tracker_thread.start()
+    # # log_thread.start()
 
-    viewer_thread.join()
-    tracker_thread.join()
+    # viewer_thread.join()
+    # tracker_thread.join()
     # log_thread.join()
