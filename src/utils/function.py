@@ -302,20 +302,10 @@ def euler_to_quaternion(x, y, z):
 
 
 def save_image(path, image):
-    if image.max() <= 1.0:
-        image = (image*255).clip(0, 255)
+    img_npy = image.clip(0, 1).detach().cpu().numpy()
 
-    img_npy = None
-    if isinstance(image, torch.Tensor):
-        img_npy = image.detach().cpu().numpy()
-    elif isinstance(image, np.ndarray):
-        img_npy = image
-    else:
-        raise ValueError("Invalid image type")
-
-    img_npy = img_npy.astype(np.uint8)
-
-    cv2.imwrite(path, (img_npy)[..., ::-1])
+    cv2.imwrite(
+        path, (img_npy*255).astype(np.uint8)[..., ::-1])
 
 
 def maxmin_normalize(v):
@@ -339,7 +329,7 @@ def normalize(v):
     return v, (mu, std)
 
 
-@ functools.lru_cache(maxsize=64)
+@functools.lru_cache(maxsize=64)
 def resize_image(image, w, h, mode='bilinear'):
 
     image = image.permute(2, 0, 1).unsqueeze(0)

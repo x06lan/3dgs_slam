@@ -54,17 +54,18 @@ class Tracker():
         self.camera = None
         self.img_id = 1
 
-        self.preview = True
+        self.test = False
         self.batch = 10
-        self.lr = 0.005
+        self.lr = 0.0025
         self.stride = 5
 
         self.datamanager = DataManager(batch=self.batch, stride=self.stride)
 
-    def init(self, preview, downsample=4, grid=16):
-        self.downsample = downsample
-        self.grid = grid
-        if preview:
+    def init(self):
+        self.inited = True
+        self.downsample = 2
+        self.distance = 8
+        if self.test:
             self.dataset = ColmapDataset("dataset/nerfstudio/poster",
                                          # self.dataset=ColmapDataset("dataset/nerfstudio/stump",
                                          # dataset = ColmapDataset("dataset/nerfstudio/aspen",
@@ -73,127 +74,86 @@ class Tracker():
                                          downsample_factor=self.downsample)
             self.camera = self.dataset.camera
             self.trainer = Trainer(ckpt="3dgs_slam_ckpt.pth",
-                                   camera=self.camera, lr=self.lr, downsample=self.downsample, distance=self.grid)
+                                   camera=self.camera, lr=self.lr, downsample=self.downsample, distance=self.distance)
         else:
-
-            width = self.shareData.recive_width
-            height = self.shareData.recive_height
-            print(width, height)
-            self.camera = Camera(width=width, height=height, cx=width/2,
-                                 cy=height/2, fx=width/2, fy=height/2, distortParams=[0, 0, 0, 0, 0], fps=30)
+            # width = self.shareData.recive_width
+            # height = self.shareData.recive_height
+            # self.camera = Camera(width=width, height=height, cx=width/2,
+            #                      cy=height/2, fx=width/2, fy=height/2, distortParams=[0, 0, 0, 0, 0], fps=30)
             # self.dataset = ColmapDataset("dataset/nerfstudio/poster",
             # self.dataset = ColmapDataset("dataset/nerfstudio/stump",
             # self.dataset = ColmapDataset("dataset/nerfstudio/aspen",
             # self.dataset = ColmapDataset("dataset/nerfstudio/redwoods2",
-            # self.dataset = ColmapDataset("dataset/nerfstudio/person",
-            #                              downsample_factor=self.downsample)
-            # self.camera = self.dataset.camera
+            self.dataset = ColmapDataset("dataset/nerfstudio/person",
+                                         downsample_factor=self.downsample)
+            self.camera = self.dataset.camera
             self.trainer = Trainer(
-                camera=self.camera, lr=self.lr, downsample=1)
+                camera=self.camera, lr=self.lr, downsample=self.downsample)
 
     def run(self):
 
         while True:
+            # with self.shareData:
 
-            self.shareData.require()
-            if (self.shareData.play):
-                if (not self.inited):
-
-                    print(self.shareData.preview, self.shareData.image_update)
-
-                    if (not self.shareData.preview and self.shareData.image_update):
-
-                        self.inited = True
-                        self.init(self.shareData.preview,
-                                  self.shareData.downsample, grid=16)
-                    elif (self.shareData.preview):
-
-                        self.inited = True
-                        self.init(self.shareData.preview,
-                                  self.shareData.downsample, grid=16)
-
-            elif (not self.inited):
-                self.shareData.release()
+            if (not self.inited and self.shareData.recive_width > 0 and self.shareData.recive_height > 0):
+                self.init()
+            elif not self.inited:
                 continue
 
-            display_image = None
+            # self.shareData.require()
+            if (self.shareData.image_update):
+                self.shareData.image_update = False
+                display_image = None
 
-            if self.shareData.preview:
+                if self.test:
+                    ground_truth = torch.from_numpy(
+                        self.shareData.recive_image)
+                    qvec = euler_to_quaternion(
+                        self.shareData.rotation[0], self.shareData.rotation[2], self.shareData.rotation[1])
+                    qvec = convert_z_up_to_y_up(qvec)
 
-                # ground_truth = torch.from_numpy(
-                # self.shareData.recive_image)
-                qvec = euler_to_quaternion(
-                    self.shareData.rotation[2]+180, self.shareData.rotation[1]+180, self.shareData.rotation[0]+180)
-                # rotate 90 degree
-                # qvec = convert_z_up_to_y_up(qvec)
-                tvec = torch.tensor(list(self.shareData.position)).to(torch.float).to(
-                    self.trainer.splatter.device)
-                print(tvec)
-                # tvec = torch.zeros(3).to(self.trainer.splatter.device)
-
-                ground_truth = None
-                image_info = self.dataset.image_info[1]
-                image_info.qvec = torch.from_numpy(qvec)
-                image_info.tvec = tvec
-                cover = False
-                grad = False
-                render_image, status = self.trainer.step(image_info=image_info,
-                                                         ground_truth=ground_truth, cover=cover, grad=grad)
-                if (self.shareData.render_width != render_image.shape[1] or self.shareData.render_height != render_image.shape[0]):
-                    self.shareData.render_width = render_image.shape[1]
-                    self.shareData.render_height = render_image.shape[0]
-                display_image = render_image[..., :3]
-                save_image("output.png", display_image)
-
-            else:
-                id = self.img_id % (200)+1
-
-                if not self.shareData.image_update:
-                    # print("no image update")
-                    self.shareData.release()
-                    continue
-                recive_image = self.shareData.recive_image
-                qvec = euler_to_quaternion(
-                    self.shareData.rotation[0], self.shareData.rotation[1], self.shareData.rotation[2])
-                qvec = torch.from_numpy(qvec).to(self.trainer.splatter.device)
-                # save_image("output.png", recive_image)
-                tvec = torch.from_numpy(self.shareData.position).to(
-                    self.trainer.splatter.device)
-
-                # ground_truth = self.dataset.images[id]
-                ground_truth = torch.from_numpy(recive_image)
-                ground_truth = ground_truth.to(torch.float).to(
-                    self.trainer.splatter.device)/255
-
-                # image_info = self.dataset.image_info[id]
-                image_info = ImageInfo(qvec=qvec, tvec=tvec)
-                # print(ground_truth.shape)
-                self.datamanager.add_image(ground_truth, image_info)
-
-                for i, (gt, info) in enumerate(self.datamanager.get_train_data()):
-                    cover = (i == 0)
-                    grad = True
-                    render_image, status = self.trainer.step(image_info=info,
-                                                             ground_truth=gt, cover=cover, grad=grad)
-                    # print(i, info.id, status)
+                    image_info = self.dataset.image_info[self.img_id]
+                    image_info.qvec = torch.from_numpy(qvec)
+                    cover = False
+                    grad = False
+                    render_image, status = self.trainer.step(image_info=image_info,
+                                                             ground_truth=ground_truth, cover=cover, grad=grad)
                     if (self.shareData.render_width != render_image.shape[1] or self.shareData.render_height != render_image.shape[0]):
                         self.shareData.render_width = render_image.shape[1]
                         self.shareData.render_height = render_image.shape[0]
                     display_image = render_image[..., :3]
-                    print(status)
-                self.img_id += 1
 
-            # self.trainer.splatter.save("3dgs_slam_ckpt.pth")
-            # print("render", display_image.shape)
-            display_image = (display_image).detach().cpu().numpy()
-            display_image = (display_image*255).astype(np.uint8)
-            share_image = self.shareData.render_image
-            share_image[:] = display_image[:]
-            # print("share", share_image.shape)
-            # print("tracker")
-            self.shareData.image_update = False
-            self.shareData.release()
-            time.sleep(0.05)
+                else:
+                    id = self.img_id % (200)+1
+
+                    ground_truth = self.dataset.images[id]
+                    ground_truth = ground_truth.to(torch.float).to(
+                        self.trainer.splatter.device)/255
+
+                    image_info = self.dataset.image_info[id]
+                    self.datamanager.add_image(ground_truth, image_info)
+
+                    for i, (gt, info) in enumerate(self.datamanager.get_train_data()):
+                        cover = (i == 0)
+                        grad = True
+                        render_image, status = self.trainer.step(image_info=info,
+                                                                 ground_truth=gt, cover=cover, grad=grad)
+                        print(i, info.id, status)
+                        if (self.shareData.render_width != render_image.shape[1] or self.shareData.render_height != render_image.shape[0]):
+                            self.shareData.render_width = render_image.shape[1]
+                            self.shareData.render_height = render_image.shape[0]
+                        display_image = render_image[..., :3]
+                    self.img_id += 1
+                save_image("output.jpg", display_image)
+                # self.trainer.splatter.save("3dgs_slam_ckpt.pth")
+                # print("render", display_image.shape)
+                display_image = (display_image).detach().cpu().numpy()
+                display_image = (display_image*255).astype(np.uint8)
+                share_image = self.shareData.render_image
+                share_image[:] = display_image[:]
+                # print("share", share_image.shape)
+            # self.shareData.release()
+            # time.sleep(0.01)
 
 
 if __name__ == "__main__":
