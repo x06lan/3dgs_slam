@@ -1,129 +1,249 @@
 <!DOCTYPE html>
 <html>
-
-<head>
+  <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WebRTC demo</title>
+    <title>3dgs slam demo</title>
     <style>
-        button {
-            padding: 8px 16px;
-        }
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background-color: #f0f0f0;
+      }
 
-        pre {
-            overflow-x: hidden;
-            overflow-y: auto;
-        }
+      #container {
+        display: flex;
+        flex-direction: column;
+        /* align-items: center; */
+        position: relative;
+        height: 100vh;
+        width: 100vw;
+      }
 
-        video {
-            width: 100%;
-        }
+      #media {
+        top: 0px;
+        right: 0px;
+        /* max-width: 1280px; */
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        overflow: hidden;
+      }
 
-        .option {
-            margin-bottom: 8px;
-        }
+      video,
+      audio {
+        /* width: 100%;
+        height: auto; */
+        width: 100%;
+        height: 100%;
+        
+        object-fit: contain;
+        /* object-fit:fill; */
+        /* object-fit: cover; */
+        object-position: 50% 0%; 
+      }
 
-        #media {
-            max-width: 1280px;
-        }
+      .gui-container {
+        position: absolute;
+        /* top: 10px; */
+        right: 5px;
+        display: flow-root;
+        z-index: 10;
+      }
+
+      .joy-stick{
+        position: absolute;
+        bottom: 50px;
+        left: 10%;
+        transform: translate(-50%, -50%);
+        width:200px;
+        height:200px;
+        margin-bottom:20px;
+        z-index: 10;
+      }
+
+      /* Styles for screens less than 1024px */
+      @media (max-width: 1023px) {
+          .joy-stick {
+              left: 50%; /* Center horizontally */
+              transform: translate(-50%, 0); /* Center horizontally */
+          }
+      }
+
+      /* Styles for screens greater than or equal to 1024px */
+      @media (min-width: 1024px) {
+          .joy-stick {
+              left: 10%; /* Position on left */
+              transform: translate(0, 0); /* No translation needed */
+          }
+      }
     </style>
-    <script src="https://unpkg.com/three@0.139.2/build/three.min.js"></script>
-    <script src="https://unpkg.com/three@0.139.2/examples/js/controls/OrbitControls.js"></script>
-</head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.7/dat.gui.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html5-joystick@2.0.0/joy.min.js"></script>
 
-<body>
+  </head>
 
-    <h2>Options</h2>
-    <div class="option">
-        <input id="use-datachannel" checked="checked" type="checkbox" />
-        <label for="use-datachannel">Use datachannel</label>
-        <select id="datachannel-parameters">
-            <option value='{"ordered": true}'>Ordered, reliable</option>
-            <option value='{"ordered": false, "maxRetransmits": 0}'>Unordered, no retransmissions</option>
-            <option value='{"ordered": false, "maxPacketLifetime": 500}'>Unordered, 500ms lifetime</option>
-        </select>
-    </div>
-    <div class="option">
-        <input id="use-audio" type="checkbox" />
-        <label for="use-audio">Use audio</label>
-        <select id="audio-input">
-            <option value="" selected>Default device</option>
-        </select>
-        <select id="audio-codec">
-            <option value="default" selected>Default codecs</option>
-            <option value="opus/48000/2">Opus</option>
-            <option value="PCMU/8000">PCMU</option>
-            <option value="PCMA/8000">PCMA</option>
-        </select>
-    </div>
-    <div class="option">
-        <input id="use-video" checked="checked" type="checkbox" />
-        <label for="use-video">Use video</label>
-        <select id="video-input">
-            <option value="" selected>Default device</option>
-        </select>
-        <select id="video-resolution">
-            <option value="" selected>Default resolution</option>
-            <option value="320x240">320x240</option>
-            <option value="640x480">640x480</option>
-            <option value="960x540">960x540</option>
-            <option value="1280x720">1280x720</option>
-        </select>
-        <select id="video-transform">
-            <option value="none" selected>No transform</option>
-            <option value="edges">Edge detection</option>
-            <option value="cartoon">Cartoon effect</option>
-            <option value="rotate">Rotate</option>
-        </select>
-        <select id="video-codec">
-            <option value="default" selected>Default codecs</option>
-            <option value="VP8/90000">VP8</option>
-            <option value="H264/90000">H264</option>
-        </select>
-    </div>
-    <div class="option">
-        <input id="use-stun" type="checkbox" />
-        <label for="use-stun">Use STUN server</label>
+  <body>
+    <div id="container">
+      <div id="controls" class="gui-container"></div>
+      <div id ="joyDiv" class="joy-stick"></div>
+
+      <div id="media">
+        <video id="video" controls autoplay loop muted>
+          <source
+            src="https://www.exit109.com/~dnn/clips/RW20seconds_2.mp4"
+            type="video/mp4"
+          />
+          <!-- <source
+            src="https://www.w3schools.com/html/mov_bbb.mp4"
+            type="video/mp4"
+          /> -->
+          Your browser does not support the video tag.
+        </video>
+
+        <!-- <div style="display: none">
+          <h2>State</h2>
+          <p>ICE gathering state: <span id="ice-gathering-state"></span></p>
+          <p>ICE connection state: <span id="ice-connection-state"></span></p>
+          <p>Signaling state: <span id="signaling-state"></span></p>
+        </div> -->
+      </div>
     </div>
 
-    <button id="start" onclick="start()">Start</button>
-    <button id="stop" style="display: none" onclick="stop()">Stop</button>
+    <!-- dat.GUI Library -->
 
-    <div style="display: none;">
-        <h2>State</h2>
-        <p>
-            ICE gathering state: <span id="ice-gathering-state"></span>
-        </p>
-        <p>
-            ICE connection state: <span id="ice-connection-state"></span>
-        </p>
-        <p>
-            Signaling state: <span id="signaling-state"></span>
-        </p>
-    </div>
+    <script>
+      // GUI Parameters
+      const guiParams = {
+        useDataChannel: true,
+        dataChannelOptions: '{"ordered": true}',
+        useAudio: false,
+        audioDevice: "",
+        audioCodec: "Default",
+        useVideo: true,
+        videoDevice: "",
+        videoResolution: "Default resolution",
+        videoEffect: "none",
+        videoCodec: "Default",
+        useStun: false,
+        useRotationSensor: true,
+        preview: true,
+        // preview: false,
+        downsample: 2,
+        grid: 8,
+        speed:1.0,
+        play:false,
+        start: () => start(guiParams),
+        stop: () => stop(guiParams),
+      };
+      async function enumerateDevices(guiParams,folder1,folder2) {
+        let device= await navigator.mediaDevices.enumerateDevices()
+        let enum_video_device = {}
+        let enum_audio_device = {}
+        enum_audio_device["Default device"]=""
+        enum_video_device["Default device"]=""
+        console.log(device)
+        let audio_devices = device.filter(device => device.kind === 'audioinput').forEach((device) => {
+            enum_audio_device[device.label] = device.deviceId
+        })
+        let video_devices = device.filter(device => device.kind === 'videoinput').forEach((device) => {
+            enum_video_device[device.label] = device.deviceId
+        })
 
-    <div id="media" style="display: none">
-        <h2>Media</h2>
+        folder1.add(guiParams, "videoDevice", enum_video_device)
+        folder2.add(guiParams, "audioDevice", enum_audio_device)
+      }
+      
 
-        <audio id="audio" autoplay="true"></audio>
-        <video id="video" autoplay="true" playsinline="true"></video>
-    </div>
-    <canvas id="three" width="480px" height="360px" user-select="none" draggable="false"></canvas>
+      // Initialize dat.GUI
+      const gui = new dat.GUI({ autoPlace: true });
 
-    <h2>Data channel</h2>
-    <pre id="data-channel" style="height: 200px;"></pre>
+    //   gui.remember(guiParams);
+      // document.body.appendChild(gui.domElement);
+      document.querySelector("#controls").appendChild(gui.domElement);
+      gui.domElement.classList.add("gui-container");
 
-    <h2>SDP</h2>
+      let joyParam = { "title": "joystick", "autoReturnToCenter": true };
+      let joy = new JoyStick('joyDiv', joyParam);
 
-    <h3>Offer</h3>
-    <pre id="offer-sdp"></pre>
+      // DataChannel Controls
+      const controlsFolder = gui.addFolder("Controls");
+      const dataChannelFolder = controlsFolder.addFolder("Data Channel");
+      dataChannelFolder
+        .add(guiParams, "useDataChannel")
+        .name("Use datachannel");
+      dataChannelFolder
+        .add(guiParams, "dataChannelOptions", {
+          "Ordered, reliable":'{"ordered": true}',
+          "Unordered, no retransmissions":'{"ordered": false, "maxRetransmits": 0}',
+          "Unordered, 500ms lifetime":'{"ordered": false, "maxPacketLifetime": 500}'
+        })
 
-    <h3>Answer</h3>
-    <pre id="answer-sdp"></pre>
+        .name("Data Channel Parameters");
+
+      // Audio Controls
+      const audioFolder = controlsFolder.addFolder("Audio");
+      audioFolder.add(guiParams, "useAudio").name("Use audio");
+    
+      audioFolder
+        .add(guiParams, "audioCodec", [
+          "Default",
+          "Opus",
+          "PCMU",
+          "PCMA",
+        ])
+        .name("Audio Codec");
+      audioFolder.hide()
+
+      // Video Controls
+      const videoFolder = controlsFolder.addFolder("Video");
+      videoFolder.add(guiParams, "useVideo").name("Use video");
+      videoFolder
+        .add(guiParams, "videoResolution", [
+          "Default resolution",
+          "320x240",
+          "640x480",
+          "960x540",
+          "1280x720",
+          "1920x1080",
+        ])
+        .name("Video Resolution");
+      videoFolder
+        .add(guiParams, "videoEffect", ["none", "edges", "cartoon", "rotate"])
+        .name("Video Effect");
+      videoFolder
+        .add(guiParams, "videoCodec", [
+          "Default",
+          "VP8/90000",
+          "H264/90000",
+        ])
+        .name("Video Codec");
+      videoFolder.open();
+
+      enumerateDevices(guiParams,videoFolder,audioFolder)
+      // STUN Controls
+      controlsFolder.add(guiParams, "useStun").name("Use STUN server");
+
+      gui.add(guiParams, "preview").name("Preview").onChange((value) => {
+        let display = value 
+        document.getElementById("joyDiv").style.display = display? "block" : "none";
+      });
+      gui.add(guiParams, "useRotationSensor").name("Use rotation sensor").onChange((value) => {
+        // let display = !value && guiParams.preview;
+        // document.getElementById("joyDiv").style.display = display? "block" : "none";
+      });
+      gui.add(guiParams, "grid", [4,8,16,32,64])
+      gui.add(guiParams, "downsample", [1,2,4,8])
+      gui.add(guiParams, "speed", 1.0, 100).step(1)
+      // Start/Stop Buttons
+      gui.add(guiParams, "start").name("Start");
+      gui.add(guiParams, "stop").name("Stop");
+
+      let display = guiParams.preview ;
+      document.getElementById("joyDiv").style.display = display? "block" : "none";
 
 
+    </script>
     <script src="client.js"></script>
-
-</body>
-
+  </body>
 </html>
