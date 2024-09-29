@@ -59,9 +59,10 @@ class Tracker:
 
         self.img_id = 1
 
-        # colmap args
+        # colmap/record args
         self.record_count = 0
-        self.record_dir = "./record_dataset"
+        self.record_dir = "./record"
+        self.clean_record = True
 
         # datamanage args
         self.datamanager_batch = 10
@@ -80,12 +81,17 @@ class Tracker:
         self.dataset_distance = 8
         self.dataset_ckpt = None  # "3dgs_slam_ckpt.pth"
 
-        self.state = "train"  # record, train, test
+        self.state = "record"  # record, train, test
 
         self.shareData: ViewerData = data
         self.datamanager = DataManager(batch=self.datamanager_batch, stride=self.datamanager_stride)
         self.dataset = None
         self.trainer = None
+
+    def clear_record_dir(self):
+        if os.path.exists(self.record_dir):
+            shutil.rmtree(self.record_dir)
+        os.makedirs(self.record_dir)
 
     def load_dataset(self):
         self.dataset = ColmapDataset(self.dataset_dir, downsample_factor=self.dataset_downsample)
@@ -101,8 +107,10 @@ class Tracker:
         init = False
         while True:
             if not init:
-                self.load_dataset()
-                self.setup_trainer()
+                # self.load_dataset()
+                # self.setup_trainer()
+                if self.clear_record_dir:
+                    self.clear_record_dir()
                 init = True
 
             if self.shareData.recive_width <= 0 or self.shareData.recive_height <= 0:
@@ -110,17 +118,14 @@ class Tracker:
                 continue
 
             if self.state == "record":
-                self.shareData.require()
+                # self.shareData.require()
                 if self.shareData.image_update:
                     self.shareData.image_update = False
-                    image = self.shareData.recive_image
-                    self.record(image)
-                    # share_image = self.shareData.render_image
-                    # share_image[:] = image[:]
-                self.shareData.release()
+                    recive_image = self.shareData.recive_image
+                    self.record(recive_image)
+                # self.shareData.release()
 
             elif self.state == "train" or self.state == "test":
-                print("A")
                 self.shareData.require()
                 display_image = self.run_gaussian(self.state)
                 save_image("output.jpg", display_image)
@@ -129,7 +134,6 @@ class Tracker:
                 share_image = self.shareData.render_image
                 share_image[:] = display_image[:]
                 self.shareData.release()
-            print("B")
             time.sleep(0.01)
 
     def run_colmap(self):
@@ -155,10 +159,9 @@ class Tracker:
         print("colmap done")
 
     def record(self, image):
-        # cv2.imwrite(f"{self.record_dir}/images/{self.record_count}.jpg", image)
-        cv2.imwrite(f"{self.record_dir}/images/{self.record_count}.jpg", (image * 255).astype(np.uint8)[..., ::-1])
-        print(image.shape)
-        # print(image)
+        print("recive", image.shape)
+        # save_image("output.png", image)
+        save_image(f"{self.record_dir}/images/{self.record_count}.png", image)
         self.record_count += 1
 
     def run_gaussian(self, setting="train"):
@@ -193,7 +196,7 @@ class Tracker:
                 cover = i == 0
                 grad = True
                 render_image, status = self.trainer.step(image_info=info, ground_truth=gt, cover=cover, grad=grad)
-                print(i, info.id, status)
+                # print(i, info.id, status)
                 if self.shareData.render_width != render_image.shape[1] or self.shareData.render_height != render_image.shape[0]:
                     self.shareData.render_width = render_image.shape[1]
                     self.shareData.render_height = render_image.shape[0]
