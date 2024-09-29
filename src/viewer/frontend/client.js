@@ -1,3 +1,9 @@
+// get DOM elements
+var dataChannelLog = document.getElementById('data-channel'),
+    iceConnectionLog = document.getElementById('ice-connection-state'),
+    iceGatheringLog = document.getElementById('ice-gathering-state'),
+    signalingLog = document.getElementById('signaling-state');
+
 // peer connection
 var pc = null;
 
@@ -6,46 +12,82 @@ var dc = null, dcInterval = null;
 
 let currentTranslation = [0, 0, 0]
 let currentRotation= [0, 0, 0]
-
-setInterval(function(){ currentTranslation[0]+=parseInt(joy.GetX())*guiParams.speed*0.0001; }, 50);
-setInterval(function(){ currentTranslation[2]+=parseInt(joy.GetY())*guiParams.speed*0.0001;}, 50);
-
 window.addEventListener('deviceorientation', deviceOrientationHandler, false);
 function deviceOrientationHandler (eventData) {
-    var dir = eventData.alpha+180;
-    var tiltFB = eventData.beta+270;
-    var tiltLR = eventData.gamma+180;
+    var tiltLR = eventData.gamma;
+    var tiltFB = eventData.beta;
+    var dir = eventData.alpha;
 
-    currentRotation = [dir, tiltFB, tiltLR]
+    currentRotation = [tiltLR, tiltFB, dir]
     // console.log(currentRotation)
     // const quaternion = sensor.quaternion;
     // currentRotation = [quaternion[0], quaternion[1], quaternion[2], quaternion[3]]
 }
-function createPeerConnection(useSTUN) {
-    var connection_config = {
+function createPeerConnection() {
+    var config = {
         sdpSemantics: 'unified-plan'
     };
 
-    if (useSTUN) {
-        connection_config.iceServers = [{ urls: ['stun:stun.l.google.com:19302'] }];
+    if (document.getElementById('use-stun').checked) {
+        config.iceServers = [{ urls: ['stun:stun.l.google.com:19302'] }];
     }
 
-    pc = new RTCPeerConnection(connection_config);
+    pc = new RTCPeerConnection(config);
 
+    // register some listeners to help debugging
+    pc.addEventListener('icegatheringstatechange', () => {
+        iceGatheringLog.textContent += ' -> ' + pc.iceGatheringState;
+    }, false);
+    iceGatheringLog.textContent = pc.iceGatheringState;
+
+    pc.addEventListener('iceconnectionstatechange', () => {
+        iceConnectionLog.textContent += ' -> ' + pc.iceConnectionState;
+    }, false);
+    iceConnectionLog.textContent = pc.iceConnectionState;
+
+    pc.addEventListener('signalingstatechange', () => {
+        signalingLog.textContent += ' -> ' + pc.signalingState;
+    }, false);
+    signalingLog.textContent = pc.signalingState;
 
     // connect audio / video
     pc.addEventListener('track', (evt) => {
         if (evt.track.kind == 'video')
             document.getElementById('video').srcObject = evt.streams[0];
         else
-            document.getElementById('video').srcObject = evt.streams[0];
-            // document.getElementById('audio').srcObject = evt.streams[0];
+            document.getElementById('audio').srcObject = evt.streams[0];
     });
 
     return pc;
 }
 
-function negotiate(config) {
+function enumerateInputDevices() {
+    const populateSelect = (select, devices) => {
+        let counter = 1;
+        devices.forEach((device) => {
+            const option = document.createElement('option');
+            option.value = device.deviceId;
+            option.text = device.label || ('Device #' + counter);
+            select.appendChild(option);
+            counter += 1;
+        });
+    };
+
+    navigator.mediaDevices.enumerateDevices().then((devices) => {
+        populateSelect(
+            document.getElementById('audio-input'),
+            devices.filter((device) => device.kind == 'audioinput')
+        );
+        populateSelect(
+            document.getElementById('video-input'),
+            devices.filter((device) => device.kind == 'videoinput')
+        );
+    }).catch((e) => {
+        alert(e);
+    });
+}
+
+function negotiate() {
     return pc.createOffer().then((offer) => {
         return pc.setLocalDescription(offer);
     }).then(() => {
@@ -67,23 +109,22 @@ function negotiate(config) {
         var offer = pc.localDescription;
         var codec;
 
-        codec = config.audioCodec;
-        if (codec !== 'Default') {
+        codec = document.getElementById('audio-codec').value;
+        if (codec !== 'default') {
             offer.sdp = sdpFilterCodec('audio', codec, offer.sdp);
         }
 
-        codec = config.videoCodec;
-        if (codec !== 'Default') {
+        codec = document.getElementById('video-codec').value;
+        if (codec !== 'default') {
             offer.sdp = sdpFilterCodec('video', codec, offer.sdp);
         }
- 
 
+        document.getElementById('offer-sdp').textContent = offer.sdp;
         return fetch('/offer', {
             body: JSON.stringify({
                 sdp: offer.sdp,
                 type: offer.type,
-                video_transform: config.videoEffect,
-                preview: config.preview,
+                video_transform: document.getElementById('video-transform').value
             }),
             headers: {
                 'Content-Type': 'application/json'
@@ -93,19 +134,18 @@ function negotiate(config) {
     }).then((response) => {
         return response.json();
     }).then((answer) => {
+        document.getElementById('answer-sdp').textContent = answer.sdp;
         return pc.setRemoteDescription(answer);
     }).catch((e) => {
-        console.error(e);
         alert(e);
     });
 }
 
 
-function start(config) {
-    // config.play = true;
-    guiParams.play = true;
+function start() {
+    document.getElementById('start').style.display = 'none';
 
-    pc = createPeerConnection(config.useStun);
+    pc = createPeerConnection();
 
     var time_start = null;
 
@@ -118,44 +158,34 @@ function start(config) {
         }
     };
 
-    if (config.useDataChannel) {
-        var parameters = JSON.parse(config.dataChannelOptions);
+    if (document.getElementById('use-datachannel').checked) {
+        var parameters = JSON.parse(document.getElementById('datachannel-parameters').value);
 
         dc = pc.createDataChannel('chat', parameters);
         dc.addEventListener('close', () => {
             clearInterval(dcInterval);
-            // dataChannelLog.textContent += '- close\n';
+            dataChannelLog.textContent += '- close\n';
         });
         dc.addEventListener('open', () => {
-            // dataChannelLog.textContent += '- open\n';
-            // let toInt= (x) => { x? 1: 0}
+            dataChannelLog.textContent += '- open\n';
             dcInterval = setInterval(() => {
 
                 let message = {
                     "time":current_stamp(),
                     "acceleration": currentTranslation,
                     "rotation": currentRotation,
-                    "downsample": guiParams.downsample,
-                    "grid": guiParams.grid,
-                    "preview": guiParams.preview,
-                    "play": guiParams.play,
                 };
                 // console.log(message)
-                // console.log(JSON.stringify(message))
-                // console.log(message["rotation"])
-                // console.log(message["acceleration"])
-
                 dc.send(JSON.stringify(message));
+                // dataChannelLog.textContent += '> ' + message + '\n';
             }, 10);
         });
         dc.addEventListener('message', (evt) => {
-            // dataChannelLog.textContent += '< ' + evt.data + '\n';
-            // let data = evt.data.split(',')
-            let data = JSON.parse(evt.data)
-            console.log(data)
-            // for (let i = 0; i < data.length && i < 3; i++) {
-            //     currentTranslation[i] = parseFloat(data[i])
-            // }
+            dataChannelLog.textContent += '< ' + evt.data + '\n';
+            let data = evt.data.split(',')
+            for (let i = 0; i < data.length && i < 3; i++) {
+                currentTranslation[i] = parseFloat(data[i])
+            }
 
         });
     }
@@ -163,14 +193,14 @@ function start(config) {
     // Build media constraints.
 
     const constraints = {
-        audio: config.useAudio,
-        video: config.useVideo
+        audio: false,
+        video: true
     };
 
-    if (config.useAudio) {
+    if (document.getElementById('use-audio').checked) {
         const audioConstraints = {};
 
-        const device = config.audioDevice;
+        const device = document.getElementById('audio-input').value;
         if (device) {
             audioConstraints.deviceId = { exact: device };
         }
@@ -178,40 +208,54 @@ function start(config) {
         constraints.audio = Object.keys(audioConstraints).length ? audioConstraints : true;
     }
 
-    if (config.useVideo && !config.preview) {
-        const videoConstraints = {
-            width: { min: 320, ideal: 1280, max: 2560 },
-            height: { min: 240, ideal: 720, max: 1440 },
-            facingMode: "environment"
-        };
+    if (document.getElementById('use-video').checked) {
+        const videoConstraints = {};
 
-        const device = config.videoDevice;
-        const resolution = config.videoResolution;
+        const device = document.getElementById('video-input').value;
+
+
+        if (device) {
+            videoConstraints.deviceId = { exact: device };
+        }
+
+        const resolution = document.getElementById('video-resolution').value;
+        if (resolution) {
+            const dimensions = resolution.split('x');
+            videoConstraints.width = parseInt(dimensions[0], 0);
+            videoConstraints.height = parseInt(dimensions[1], 0);
+        } else {
+
+            videoConstraints.width = 2000;
+            videoConstraints.height = 2000;
+
+        }
 
         constraints.video = Object.keys(videoConstraints).length ? videoConstraints : true;
     }
 
     // Acquire media and start negociation.
 
-    if (constraints.audio || constraints.video ) {
+    if (constraints.audio || constraints.video) {
+        if (constraints.video) {
+            document.getElementById('media').style.display = 'block';
+        }
         navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
             stream.getTracks().forEach((track) => {
                 pc.addTrack(track, stream);
             });
-            return negotiate(config);
+            return negotiate();
         }, (err) => {
-            console.log(err)
             alert('Could not acquire media: ' + err);
         });
     } else {
-        negotiate(config);
+        negotiate();
     }
+
+    document.getElementById('stop').style.display = 'inline-block';
 }
 
-function stop(config) {
-    // config.play = false;
-    guiParams.play = false;
-    
+function stop() {
+    document.getElementById('stop').style.display = 'none';
 
     // close data channel
     if (dc) {
@@ -372,5 +416,5 @@ function threejs() {
 }
 
 
-// enumerateInputDevices();
+enumerateInputDevices();
 // threejs();
