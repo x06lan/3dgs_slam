@@ -17,9 +17,6 @@ function deviceOrientationHandler (eventData) {
     var tiltLR = eventData.gamma+180;
 
     currentRotation = [dir, tiltFB, tiltLR]
-    // console.log(currentRotation)
-    // const quaternion = sensor.quaternion;
-    // currentRotation = [quaternion[0], quaternion[1], quaternion[2], quaternion[3]]
 }
 function createPeerConnection(useSTUN) {
     var connection_config = {
@@ -141,9 +138,6 @@ function start(config) {
                     "play": guiParams.play,
                 };
                 // console.log(message)
-                // console.log(JSON.stringify(message))
-                // console.log(message["rotation"])
-                // console.log(message["acceleration"])
 
                 dc.send(JSON.stringify(message));
             }, 10);

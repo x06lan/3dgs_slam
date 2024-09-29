@@ -252,9 +252,6 @@ class Viewer:
 
         log_info("Created for %s", request.remote)
 
-        # prepare local media
-        # player = MediaPlayer(os.path.join(ROOT, "demo-instruct.wav"))
-
         recorder = MediaBlackhole()
 
         @pc.on("datachannel")
@@ -283,9 +280,7 @@ class Viewer:
 
                     self.shareData.release()
 
-                    # print(self.shareData.position)
                     # data = json.dumps({"position": self.shareData.position})
-                    # print(data)
                     # channel.send(data)
                 else:
                     raise ValueError("Invalid message")

@@ -149,25 +149,18 @@ class Tracker():
                 id = self.img_id % (200)+1
 
                 if not self.shareData.image_update:
-                    # print("no image update")
                     self.shareData.release()
                     continue
                 recive_image = self.shareData.recive_image
                 qvec = euler_to_quaternion(
                     self.shareData.rotation[0], self.shareData.rotation[1], self.shareData.rotation[2])
                 qvec = torch.from_numpy(qvec).to(self.trainer.splatter.device)
-                # save_image("output.png", recive_image)
-                tvec = torch.from_numpy(self.shareData.position).to(
-                    self.trainer.splatter.device)
 
-                # ground_truth = self.dataset.images[id]
                 ground_truth = torch.from_numpy(recive_image)
                 ground_truth = ground_truth.to(torch.float).to(
                     self.trainer.splatter.device)/255
 
-                # image_info = self.dataset.image_info[id]
-                image_info = ImageInfo(qvec=qvec, tvec=tvec)
-                # print(ground_truth.shape)
+                image_info = ImageInfo(qvec=qvec)
                 self.datamanager.add_image(ground_truth, image_info)
 
                 for i, (gt, info) in enumerate(self.datamanager.get_train_data()):
@@ -183,14 +176,11 @@ class Tracker():
                     print(status)
                 self.img_id += 1
 
-            # self.trainer.splatter.save("3dgs_slam_ckpt.pth")
-            # print("render", display_image.shape)
             display_image = (display_image).detach().cpu().numpy()
             display_image = (display_image*255).astype(np.uint8)
             share_image = self.shareData.render_image
             share_image[:] = display_image[:]
-            # print("share", share_image.shape)
-            # print("tracker")
+
             self.shareData.image_update = False
             self.shareData.release()
             time.sleep(0.05)
