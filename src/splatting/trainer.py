@@ -25,7 +25,7 @@ class Trainer():
         self.downsample = downsample
 
         self.splatter = CoverSplatter(
-            load_ckpt=ckpt, downsample=self.downsample, grid_downsample=distance)
+            load_ckpt=ckpt, downsample=self.downsample, distance=distance)
 
         if camera is not None:
             self.splatter.set_camera(camera)

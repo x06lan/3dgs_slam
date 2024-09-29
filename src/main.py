@@ -54,17 +54,18 @@ class Tracker():
         self.camera = None
         self.img_id = 1
 
-        self.preview = True
+        self.test = False
         self.batch = 10
-        self.lr = 0.005
+        self.lr = 0.0025
         self.stride = 5
 
         self.datamanager = DataManager(batch=self.batch, stride=self.stride)
 
-    def init(self, preview, downsample=4, grid=16):
-        self.downsample = downsample
-        self.grid = grid
-        if preview:
+    def init(self):
+        self.inited = True
+        self.downsample = 2
+        self.distance = 8
+        if self.test:
             self.dataset = ColmapDataset("dataset/nerfstudio/poster",
                                          # self.dataset=ColmapDataset("dataset/nerfstudio/stump",
                                          # dataset = ColmapDataset("dataset/nerfstudio/aspen",
@@ -73,52 +74,43 @@ class Tracker():
                                          downsample_factor=self.downsample)
             self.camera = self.dataset.camera
             self.trainer = Trainer(ckpt="3dgs_slam_ckpt.pth",
-                                   camera=self.camera, lr=self.lr, downsample=self.downsample, distance=self.grid)
+                                   camera=self.camera, lr=self.lr, downsample=self.downsample, distance=self.distance)
         else:
-
-            width = self.shareData.recive_width
-            height = self.shareData.recive_height
-            print(width, height)
-            self.camera = Camera(width=width, height=height, cx=width/2,
-                                 cy=height/2, fx=width/2, fy=height/2, distortParams=[0, 0, 0, 0, 0], fps=30)
+            # width = self.shareData.recive_width
+            # height = self.shareData.recive_height
+            # self.camera = Camera(width=width, height=height, cx=width/2,
+            #                      cy=height/2, fx=width/2, fy=height/2, distortParams=[0, 0, 0, 0, 0], fps=30)
             # self.dataset = ColmapDataset("dataset/nerfstudio/poster",
             # self.dataset = ColmapDataset("dataset/nerfstudio/stump",
             # self.dataset = ColmapDataset("dataset/nerfstudio/aspen",
             # self.dataset = ColmapDataset("dataset/nerfstudio/redwoods2",
-            # self.dataset = ColmapDataset("dataset/nerfstudio/person",
-            #                              downsample_factor=self.downsample)
-            # self.camera = self.dataset.camera
+            self.dataset = ColmapDataset("dataset/nerfstudio/person",
+                                         downsample_factor=self.downsample)
+            self.camera = self.dataset.camera
             self.trainer = Trainer(
-                camera=self.camera, lr=self.lr, downsample=1)
+                camera=self.camera, lr=self.lr, downsample=self.downsample)
 
     def run(self):
 
         while True:
+            # with self.shareData:
 
-            self.shareData.require()
-            if (self.shareData.play):
-                if (not self.inited):
-
-                    print(self.shareData.preview, self.shareData.image_update)
-
-                    if (not self.shareData.preview and self.shareData.image_update):
-
-                        self.inited = True
-                        self.init(self.shareData.preview,
-                                  self.shareData.downsample, grid=16)
-                    elif (self.shareData.preview):
-
-                        self.inited = True
-                        self.init(self.shareData.preview,
-                                  self.shareData.downsample, grid=16)
-
-            elif (not self.inited):
-                self.shareData.release()
+            if (not self.inited and self.shareData.recive_width > 0 and self.shareData.recive_height > 0):
+                self.init()
+            elif not self.inited:
                 continue
 
-            display_image = None
+            # self.shareData.require()
+            if (self.shareData.image_update):
+                self.shareData.image_update = False
+                display_image = None
 
-            if self.shareData.preview:
+                if self.test:
+                    ground_truth = torch.from_numpy(
+                        self.shareData.recive_image)
+                    qvec = euler_to_quaternion(
+                        self.shareData.rotation[0], self.shareData.rotation[2], self.shareData.rotation[1])
+                    qvec = convert_z_up_to_y_up(qvec)
 
                 # ground_truth = torch.from_numpy(
                 # self.shareData.recive_image)
@@ -173,8 +165,6 @@ class Tracker():
                         self.shareData.render_width = render_image.shape[1]
                         self.shareData.render_height = render_image.shape[0]
                     display_image = render_image[..., :3]
-                    print(status)
-                self.img_id += 1
 
             display_image = (display_image).detach().cpu().numpy()
             display_image = (display_image*255).astype(np.uint8)
