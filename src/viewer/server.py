@@ -33,7 +33,7 @@ class ViewerData:
         self.render_image_raw = self.smm.SharedMemory(size=image.nbytes)
 
         # dara =[width, height, is_updated]
-        self.datas = self.smm.ShareableList([-1, -1, 100, 100, False, False])
+        self.datas = self.smm.ShareableList([-1, -1, 100, 100, False, False, False, 8, False, 2, 0])
         self.position = self.smm.ShareableList([0.0, 0.0, 0.0])
         self.rotation = self.smm.ShareableList([0.0, 0.0, 0.0])
 
@@ -93,6 +93,46 @@ class ViewerData:
     def transform_update(self, value):
         self.datas[5] = value
 
+    @property
+    def play(self):
+        return self.datas[6]
+
+    @property
+    def stage(self):
+        return self.datas[10]
+
+    @stage.setter
+    def stage(self, value):
+        self.datas[10] = value
+
+    @play.setter
+    def play(self, value):
+        self.datas[6] = value
+
+    @property
+    def grid(self):
+        return self.datas[7]
+
+    @grid.setter
+    def grid(self, value):
+        self.datas[7] = value
+
+    @property
+    def preview(self):
+        return self.datas[8]
+
+    @preview.setter
+    def preview(self, value):
+        self.datas[8] = value
+
+    @property
+    def downsample(self):
+        return self.datas[9]
+
+    @downsample.setter
+    def downsample(self, value):
+        self.datas[9] = value
+
     def require(self):
         self.lock.acquire()
 
@@ -113,30 +153,27 @@ pcs = set()
 relay = MediaRelay()
 
 
-class VideoTransformTrack(MediaStreamTrack):
+class TrainRenderTrack(MediaStreamTrack):
     """
     A video stream track that transforms frames from an another track.
     """
 
     kind = "video"
 
-    def __init__(self, track, transform, data: ViewerData):
+    def __init__(self, track, data: ViewerData):
         super().__init__()  # don't forget this!
         self.track = track
-        self.transform = transform
         self.shareData = data
 
     async def recv(self):
         frame: VideoFrame = await self.track.recv()
-        # img = frame.to_ndarray(format="bgr24")
         img = frame.to_ndarray(format="rgb24")
 
         # with self.shareData:
         self.shareData.require()
         self.shareData.image_update = True
 
-        if (self.shareData.recive_width != img.shape[1] or self.shareData.recive_height != img.shape[0]):
-            # setting width and height
+        if self.shareData.recive_width != img.shape[1] or self.shareData.recive_height != img.shape[0]:
             self.shareData.recive_width = img.shape[1]
             self.shareData.recive_height = img.shape[0]
         share_image = self.shareData.recive_image
@@ -145,15 +182,40 @@ class VideoTransformTrack(MediaStreamTrack):
         send_back_image = self.shareData.render_image
         self.shareData.release()
 
-        send_back_image = VideoFrame.from_ndarray(
-            send_back_image, format="rgb24")
+        send_back_image = VideoFrame.from_ndarray(send_back_image, format="rgb24")
 
         send_back_image.pts = frame.pts
         send_back_image.time_base = frame.time_base
-        # print("send_back_image")
 
         return send_back_image
         # return frame
+
+
+class RenderTrack(MediaStreamTrack):
+    """
+    A video stream track that transforms frames from an another track.
+    """
+
+    kind = "video"
+
+    def __init__(self, track, data: ViewerData):
+        super().__init__()  # don't forget this!
+        self.track = track
+        self.shareData = data
+
+    async def recv(self):
+        pts, time_base = await self.track.next_timestamp()
+        self.shareData.require()
+        send_back_image = self.shareData.render_image
+        self.shareData.release()
+
+        send_back_image = VideoFrame.from_ndarray(send_back_image, format="rgb24")
+
+        send_back_image.pts = pts
+        send_back_image.time_base = time_base
+        # print("send_back_image")
+
+        return send_back_image
 
 
 class Viewer:
@@ -195,9 +257,6 @@ class Viewer:
 
         log_info("Created for %s", request.remote)
 
-        # prepare local media
-        # player = MediaPlayer(os.path.join(ROOT, "demo-instruct.wav"))
-
         recorder = MediaBlackhole()
 
         @pc.on("datachannel")
@@ -207,22 +266,29 @@ class Viewer:
             def on_message(message):
                 if isinstance(message, str):
                     info = json.loads(message)
+
                     self.shareData.require()
+
                     self.transform_update = True
 
-                    self.shareData.position[0] = 0
-                    self.shareData.position[1] = 0
-                    self.shareData.position[2] = 0
+                    self.shareData.position[0] = info["acceleration"][0]
+                    self.shareData.position[1] = info["acceleration"][1]
+                    self.shareData.position[2] = info["acceleration"][2]
 
                     self.shareData.rotation[0] = info["rotation"][0]
                     self.shareData.rotation[1] = info["rotation"][1]
                     self.shareData.rotation[2] = info["rotation"][2]
 
-                    # print("rotation:", info["rotation"])
+                    self.shareData.grid = info["grid"]
+                    self.shareData.play = info["play"]
+                    self.shareData.preview = info["preview"]
 
                     self.shareData.release()
-                    position = f"{self.shareData.position[0]},{self.shareData.position[1]},{self.shareData.position[2]}"
-                    channel.send(position)
+
+                    # data = json.dumps({"position": self.shareData.position})
+                    # channel.send(data)
+                else:
+                    raise ValueError("Invalid message")
 
         @pc.on("connectionstatechange")
         async def on_connectionstatechange():
@@ -234,23 +300,20 @@ class Viewer:
         @pc.on("track")
         def on_track(track):
             log_info("Track %s received", track.kind)
-
+            print(track.kind)
             if track.kind == "audio":
                 # pc.addTrack(player.audio)
-                recorder.addTrack(track)
+                pc.addTrack(RenderTrack(relay.subscribe(track), data=self.shareData))
+                pass
             elif track.kind == "video":
-                pc.addTrack(
-                    VideoTransformTrack(
-                        relay.subscribe(track), transform=params["video_transform"], data=self.shareData
-                    )
-                )
-                # if args.record_to:
-                #     recorder.addTrack(relay.subscribe(track))
+                pc.addTrack(TrainRenderTrack(relay.subscribe(track), data=self.shareData))
 
-            @ track.on("ended")
+            @track.on("ended")
             async def on_ended():
                 log_info("Track %s ended", track.kind)
                 await recorder.stop()
+
+            pass
 
         # handle offer
         await pc.setRemoteDescription(offer)
@@ -262,15 +325,15 @@ class Viewer:
 
         return web.Response(
             content_type="application/json",
-            text=json.dumps(
-                {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type}
-            ),
+            text=json.dumps({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type}),
         )
 
-    def run(self, host, port,):
-        web.run_app(
-            self.app, access_log=None, host=host, port=port, ssl_context=None
-        )
+    def run(
+        self,
+        host,
+        port,
+    ):
+        web.run_app(self.app, access_log=None, host=host, port=port, ssl_context=None)
         pass
 
 
