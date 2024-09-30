@@ -78,9 +78,6 @@ class CoverSplatter(Splatter):
         return world
 
     def cover_point(self, image_info: ImageInfo, ground_truth: torch.Tensor, depth: torch.Tensor, render_image: torch.Tensor, alpha_threshold: float = 0.5):
-        print(image_info)
-        print(ground_truth.shape)
-        print(render_image.shape)
         # resize
         render_image_down = resize_image(render_image, self.down_w, self.down_h)
         ground_truth_down = resize_image(ground_truth, self.down_w, self.down_h)
@@ -163,8 +160,6 @@ class CoverSplatter(Splatter):
         render_image = super().forward(image_info)
 
         if cover:
-            print(render_image.shape[:2])
-            print(ground_truth.shape[:2])
             assert render_image.shape[:2] == ground_truth.shape[:2]
 
             gt_depth = self.depth_estimator.estimate(ground_truth.cpu().numpy()).cpu()

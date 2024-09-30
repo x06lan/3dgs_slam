@@ -22,7 +22,8 @@ from viewer.server import Viewer, ViewerData
 
 from splatting.trainer import Trainer
 
-# TODO: run dataset
+# TODO: run dataset (?)
+# TODO: send stage to viewer
 
 SKIP_COLMAP = True
 
@@ -162,13 +163,14 @@ class Tracker:
     def run(self):
         while True:
             self.shareData.require()
-            # IDLE
-            if SKIP_COLMAP and self.shareData.stage == 0:
-                self.shareData.stage = 3
 
-            if self.shareData.stage == 0 and self.shareData.play:
+            # IDLE
+            if self.shareData.stage == 0:
                 # start record
-                self.shareData.stage = 1
+                if self.shareData.play:
+                    self.shareData.stage = 1
+                if SKIP_COLMAP:
+                    self.shareData.stage = 3
 
             # RECORD
             elif self.shareData.stage == 1:
