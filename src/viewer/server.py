@@ -303,7 +303,7 @@ class Viewer:
                     self.shareData.preview = info["preview"]
                     self.shareData.is_recording = info["isRecording"]
                     self.shareData.dataset = info["dataset"]
-                    self.shareData.downsample = info["downsample"]
+                    self.shareData.downsample = int(info["downsample"])
 
                     self.shareData.release()
 

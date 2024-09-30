@@ -198,7 +198,6 @@ class Tracker:
                     else:
                         self.shareData.stage = 3
                         self.dataset_dir = self.shareData.dataset
-                        print(f"dataset: {self.dataset_dir}")
                         self.shareData.release()
                         continue
 

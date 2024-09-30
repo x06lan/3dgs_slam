@@ -476,7 +476,7 @@ class ColmapDataset(Dataset):
         img_dir = os.path.join(path, "images")
         if self.downsample_factor != 1:
             img_dir = os.path.join(path, f"images_{self.downsample_factor}")
-        print(img_dir)
+        print(f"dataset: {img_dir}")
 
         self.images = []
         img_ids = sorted([im.id for im in self.image_info.values()])
