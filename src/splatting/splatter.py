@@ -235,7 +235,7 @@ class Splatter(nn.Module):
     def render(self, culling_gaussians: Gaussians,  w2c_r: torch.tensor, w2c_t: torch.tensor):
 
         def empty_image():
-            return torch.zeros(self.tile_info.padded_height, self.tile_info.padded_width, 3, device=self.device, dtype=torch.float32)
+            return torch.zeros(self.tile_info.padded_height, self.tile_info.padded_width, 5, device=self.device, dtype=torch.float32)
 
         if len(culling_gaussians.pos) == 0:
             return empty_image()
@@ -351,8 +351,8 @@ if __name__ == "__main__":
 
     frame = 0
     downsample = 2
-    dataset = ColmapDataset("dataset/nerfstudio/poster",
-                            downsample_factor=downsample)
+    # dataset = ColmapDataset("dataset/nerfstudio/poster",
+    #                         downsample_factor=downsample)
     # dataset = ColmapDataset("dataset/nerfstudio/aspen")
 
     # splatter = Splatter(init_points=dataset.points3d,

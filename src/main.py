@@ -52,7 +52,7 @@ class DataManager:
         length = len(self.data)
         length = min(length, self.batch * self.stride)
 
-        return self.data[0 : length : self.stride]
+        return self.data[0: length: self.stride]
 
 
 class Colmap:
@@ -132,18 +132,23 @@ class Tracker:
         os.makedirs(self.data_dir + "/images")
 
     def load_dataset(self, preview, grid, downsample=4):
+
         self.downsample = downsample
         self.grid = grid
         self.downscale_dataset(downsample)
         if preview:
-            self.dataset = ColmapDataset(self.dataset_dir, downsample_factor=downsample)
+            self.dataset = ColmapDataset(
+                self.dataset_dir, downsample_factor=downsample)
             self.camera = self.dataset.camera
-            self.trainer = Trainer(ckpt=self.ckpt, camera=self.camera, lr=self.lr, downsample=downsample, distance=self.grid)
+            self.trainer = Trainer(ckpt=self.ckpt, camera=self.camera,
+                                   lr=self.lr, downsample=downsample, distance=self.grid)
         else:
             # print(width, height)
-            self.dataset = ColmapDataset(self.dataset_dir, downsample_factor=downsample)
+            self.dataset = ColmapDataset(
+                self.dataset_dir, downsample_factor=downsample)
             self.camera = self.dataset.camera
-            self.trainer = Trainer(camera=self.camera, lr=self.lr, downsample=downsample)
+            self.trainer = Trainer(
+                camera=self.camera, lr=self.lr, downsample=downsample)
 
     def downscale_dataset(self, downscale):
         oringin_dir = f"{self.dataset_dir}/images"
@@ -153,7 +158,8 @@ class Tracker:
         os.mkdir(new_dir)
         for filename in tqdm(os.listdir(oringin_dir)):
             img = cv2.imread(os.path.join(oringin_dir, filename))
-            img = cv2.resize(img, (img.shape[1] // downscale, img.shape[0] // downscale))
+            img = cv2.resize(
+                img, (img.shape[1] // downscale, img.shape[0] // downscale))
             cv2.imwrite(os.path.join(new_dir, filename), img)
 
     def resize_record_images(self):
@@ -179,9 +185,13 @@ class Tracker:
                 if self.shareData.play:
                     if self.shareData.preview:
                         self.shareData.stage = 4
+                        self.dataset_dir = self.shareData.dataset
+
                         grid = self.shareData.grid
                         downsample = self.shareData.downsample
+
                         self.downsample = downsample
+
                         self.load_dataset(True, grid, downsample)
                         self.shareData.release()
                         continue
@@ -191,7 +201,9 @@ class Tracker:
                         self.shareData.stage = 1
                     else:
                         self.shareData.stage = 3
-                        self.dataset_dir = self.shareData.dataset
+
+                        # self.dataset_dir = self.shareData.dataset
+
                         print(f"dataset: {self.dataset_dir}")
                         self.shareData.release()
                         continue
@@ -200,14 +212,15 @@ class Tracker:
             elif self.shareData.stage == 1:
                 if self.shareData.is_recording == False:
                     # stop record, start colmap
-                    self.resize_record_images()
+                    # self.resize_record_images()
                     self.shareData.stage = 2
                     self.shareData.release()
                     continue
 
                 if self.shareData.image_update:
                     image = self.shareData.recive_image
-                    save_image(f"{self.data_dir}/images/{self.record_count}.png", image)
+                    save_image(
+                        f"{self.data_dir}/images/{self.record_count}.png", image)
                     print(f"record {self.record_count}: {image.shape}")
                     self.record_count += 1
 
@@ -226,9 +239,10 @@ class Tracker:
             # TRAIN
             elif self.shareData.stage == 3 and self.shareData.play:
                 if not self.is_loaded_dataset:
+
                     grid = self.shareData.grid
                     downsample = self.shareData.downsample
-                    downsample = 1
+
                     self.load_dataset(False, grid, downsample)
                     self.is_loaded_dataset = True
                     print("TRAIN")
@@ -242,24 +256,32 @@ class Tracker:
                     continue
 
                 display_image = None
-                ground_truth = self.dataset.images[self.train_progress].to(torch.float).to(self.trainer.splatter.device) / 255
+                ground_truth = self.dataset.images[self.train_progress].to(
+                    torch.float).to(self.trainer.splatter.device) / 255
+
                 image_info = self.dataset.image_info[self.train_progress]
+
                 self.datamanager.add_image(ground_truth, image_info)
-                print(f"train {self.train_progress}/{len(self.dataset.images)}")
 
                 for i, (gt, info) in enumerate(self.datamanager.get_train_data()):
                     cover = i == 0
                     grad = True
-                    render_image, status = self.trainer.step(image_info=info, ground_truth=gt, cover=cover, grad=grad)
+                    render_image, status = self.trainer.step(
+                        image_info=info, ground_truth=gt, cover=cover, grad=grad)
+                    print(
+                        f"train {self.train_progress}/{len(self.dataset.images)}", status)
                     # print(i, info.id, status)
-                    if self.shareData.render_width != render_image.shape[1] or self.shareData.render_height != render_image.shape[0]:
-                        self.shareData.render_width = render_image.shape[1]
-                        self.shareData.render_height = render_image.shape[0]
                     display_image = render_image[..., :3]
+
                 self.train_progress += 1
 
                 display_image = (display_image).detach().cpu().numpy()
                 display_image = (display_image * 255).astype(np.uint8)
+
+                if self.shareData.render_width != display_image.shape[1] or self.shareData.render_height != display_image.shape[0]:
+                    self.shareData.render_width = display_image.shape[1]
+                    self.shareData.render_height = display_image.shape[0]
+
                 self.shareData.render_width = display_image.shape[1]
                 self.shareData.render_height = display_image.shape[0]
                 share_image = self.shareData.render_image
@@ -269,10 +291,12 @@ class Tracker:
             elif self.shareData.stage == 4 and self.shareData.play:
                 # ground_truth = torch.from_numpy(
                 # self.shareData.recive_image)
-                qvec = euler_to_quaternion(self.shareData.rotation[2] + 180, self.shareData.rotation[1] + 180, self.shareData.rotation[0] + 180)
+                qvec = euler_to_quaternion(
+                    self.shareData.rotation[2] + 180, self.shareData.rotation[1] + 180, self.shareData.rotation[0] + 180)
                 # rotate 90 degree
                 # qvec = convert_z_up_to_y_up(qvec)
-                tvec = torch.tensor(list(self.shareData.position)).to(torch.float).to(self.trainer.splatter.device)
+                tvec = torch.tensor(list(self.shareData.position)).to(
+                    torch.float).to(self.trainer.splatter.device)
                 # print(tvec)
                 # tvec = torch.zeros(3).to(self.trainer.splatter.device)
 
@@ -282,12 +306,12 @@ class Tracker:
                 image_info.tvec = tvec
                 cover = False
                 grad = False
-                render_image, status = self.trainer.step(image_info=image_info, ground_truth=ground_truth, cover=cover, grad=grad)
+                render_image, status = self.trainer.step(
+                    image_info=image_info, ground_truth=ground_truth, cover=cover, grad=grad)
                 if self.shareData.render_width != render_image.shape[1] or self.shareData.render_height != render_image.shape[0]:
                     self.shareData.render_width = render_image.shape[1]
                     self.shareData.render_height = render_image.shape[0]
                 display_image = render_image[..., :3]
-                save_image("output.png", display_image)
 
                 display_image = (display_image).detach().cpu().numpy()
                 display_image = (display_image * 255).astype(np.uint8)
@@ -296,7 +320,7 @@ class Tracker:
 
             self.shareData.image_update = False
             self.shareData.release()
-            time.sleep(0.05)
+            time.sleep(0.015)
 
 
 if __name__ == "__main__":
@@ -308,7 +332,8 @@ if __name__ == "__main__":
     tracker = Tracker(data)
     colmap = Colmap(data)
 
-    viewer_thread = multiprocessing.Process(target=viewer.run, args=("0.0.0.0", 8000))
+    viewer_thread = multiprocessing.Process(
+        target=viewer.run, args=("0.0.0.0", 8000))
     tracker_thread = multiprocessing.Process(target=tracker.run, args=())
     colmap_thread = multiprocessing.Process(target=colmap.run, args=())
 

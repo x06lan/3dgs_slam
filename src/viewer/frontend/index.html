@@ -127,13 +127,14 @@
         videoCodec: "Default",
         useStun: false,
         useRotationSensor: true,
-        preview: true,
-        // preview: false,
+        // preview: true,
+        preview: false,
         downsample: 2,
         grid: 8,
         speed:1.0,
         play:false,
         isRecording: false,
+        stage: 0,
         start: () => start(guiParams),
         stop: () => {guiParams.isRecording = false;},
         dataset: "dataset/nerfstudio/poster",
@@ -239,6 +240,7 @@
       gui.add(guiParams, "downsample", [1,2,4,8])
       gui.add(guiParams, "speed", 1.0, 100).step(1)
       // Start/Stop Buttons
+      gui.add(guiParams,"stage",{"idel":0,"recording":1,"colmap process":2,"traing":3,"preview":4}).listen()
       gui.add(guiParams, "start").name("Start");
       gui.add(guiParams, "stop").name("Stop");
 

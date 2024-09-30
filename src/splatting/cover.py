@@ -29,7 +29,8 @@ import ipdb
 class CoverSplatter(Splatter):
     def __init__(self, init_points: Union[Point3D, dict, None] = None, load_ckpt: Union[str, None] = None, downsample=1, use_sh_coeff=False, grid_downsample=4):
 
-        super(CoverSplatter, self).__init__(init_points, load_ckpt, downsample, use_sh_coeff)
+        super(CoverSplatter, self).__init__(
+            init_points, load_ckpt, downsample, use_sh_coeff)
 
         self.distance: int = grid_downsample
         self.depth_estimator = Estimator()
@@ -48,10 +49,13 @@ class CoverSplatter(Splatter):
         assert self.camera != None
 
         width, height = self.camera.width, self.camera.height
-        self.down_w, self.down_h = int(width / distance), int(height / distance)
+        self.down_w, self.down_h = int(
+            width / distance), int(height / distance)
 
-        x = (torch.arange(self.down_w) * distance + 0.5 * distance).repeat(self.down_h, 1)
-        y = (torch.arange(self.down_h) * distance + 0.5 * distance).repeat(self.down_w, 1).t()
+        x = (torch.arange(self.down_w) * distance +
+             0.5 * distance).repeat(self.down_h, 1)
+        y = (torch.arange(self.down_h) * distance +
+             0.5 * distance).repeat(self.down_w, 1).t()
 
         self.coords = torch.stack((x, y), dim=2).to(torch.float32)
         # self.coords = self.coords.reshape(-1, 2)
@@ -60,27 +64,34 @@ class CoverSplatter(Splatter):
 
         batch = image_coord.shape[0]
 
-        K_inv = torch.inverse(camera.K_tensor).to(torch.float32).to(self.device)
-        R_inv = torch.inverse(extrinsics[:3, :3]).to(torch.float32).to(self.device)
+        K_inv = torch.inverse(camera.K_tensor).to(
+            torch.float32).to(self.device)
+        R_inv = torch.inverse(extrinsics[:3, :3]).to(
+            torch.float32).to(self.device)
 
         t = extrinsics[:3, 3].unsqueeze(0).to(self.device)
 
         screen_space = image_coord.clone().to(torch.float32)
 
-        screen_space = torch.cat((screen_space, torch.ones((batch, 1)).to(torch.float32)), dim=1).to(self.device)  # Shape: (N, 4)
+        screen_space = torch.cat((screen_space, torch.ones((batch, 1)).to(
+            torch.float32)), dim=1).to(self.device)  # Shape: (N, 4)
 
-        camera_space = torch.einsum("ij,bj->bi", K_inv, screen_space)  # Shape: (N, 3)
+        camera_space = torch.einsum(
+            "ij,bj->bi", K_inv, screen_space)  # Shape: (N, 3)
 
         camera_space *= depth.to(self.device)
 
-        world = torch.einsum("ij,bj->bi", R_inv, camera_space - t)  # Shape: (N, 3)
+        world = torch.einsum("ij,bj->bi", R_inv,
+                             camera_space - t)  # Shape: (N, 3)
 
         return world
 
     def cover_point(self, image_info: ImageInfo, ground_truth: torch.Tensor, depth: torch.Tensor, render_image: torch.Tensor, alpha_threshold: float = 0.5):
         # resize
-        render_image_down = resize_image(render_image, self.down_w, self.down_h)
-        ground_truth_down = resize_image(ground_truth, self.down_w, self.down_h)
+        render_image_down = resize_image(
+            render_image, self.down_w, self.down_h)
+        ground_truth_down = resize_image(
+            ground_truth, self.down_w, self.down_h)
         depth_down = resize_image(depth, self.down_w, self.down_h)
 
         # error_threshold = 0.3
@@ -97,7 +108,8 @@ class CoverSplatter(Splatter):
         # 0 to 1 to inv sigmoid
         uncover_color = torch.log(uncover_color / (1 - uncover_color))
 
-        uncover_point = self.screen_space_to_world_coords(image_info.extrinsic(), self.camera, uncover_coords, uncover_depth)
+        uncover_point = self.screen_space_to_world_coords(
+            image_info.extrinsic(), self.camera, uncover_coords, uncover_depth)
 
         n = uncover_point.shape[0]
 
@@ -113,10 +125,12 @@ class CoverSplatter(Splatter):
         # scale = uncover_depth/self.camera.fx
         # uncover_scale = torch.ones(
         #     (uncover_point.shape[0], 3))*0.01*self.distance*scale
-        new_quaternion = torch.Tensor([1, 0, 0, 0]).unsqueeze(dim=0).repeat(n, 1)
+        new_quaternion = torch.Tensor(
+            [1, 0, 0, 0]).unsqueeze(dim=0).repeat(n, 1)
         new_opacity = torch.ones(n) * self.init_opacity
 
-        append_gaussian = Gaussians(pos=uncover_point, rgb=uncover_color, opacty=new_opacity, scale=uncover_scale, quaternion=new_quaternion, device=self.device, init_value=True)
+        append_gaussian = Gaussians(pos=uncover_point, rgb=uncover_color, opacty=new_opacity,
+                                    scale=uncover_scale, quaternion=new_quaternion, device=self.device, init_value=True)
 
         return append_gaussian
 
@@ -134,7 +148,8 @@ class CoverSplatter(Splatter):
         # scale < 0.1
         del_mask = torch.norm(gaussians.scale, dim=-1) < 0.001
         # scale > 100.0
-        del_mask = torch.logical_or(del_mask, torch.norm(gaussians.scale, dim=-1) > 1000.0)
+        del_mask = torch.logical_or(
+            del_mask, torch.norm(gaussians.scale, dim=-1) > 1000.0)
         # opacity < 0.001
         del_mask = torch.logical_or(del_mask, gaussians.opacity < 0.0001)
 
@@ -159,9 +174,11 @@ class CoverSplatter(Splatter):
 
         render_image = super().forward(image_info)
         if cover:
+            assert render_image.shape[-1] == 5
             assert render_image.shape[:2] == ground_truth.shape[:2]
 
-            gt_depth = self.depth_estimator.estimate(ground_truth.cpu().numpy()).cpu()
+            gt_depth = self.depth_estimator.estimate(
+                ground_truth.cpu().numpy()).cpu()
             # uncover_depth = (uncover_depth-uncover_depth.min())/uncover_depth.max()
             # depth = (1.0/(depth*0.07+0.001))
             # uncover_depth = (1.0/(uncover_depth*0.03+0.001))*5.0
@@ -177,10 +194,11 @@ class CoverSplatter(Splatter):
             # scaled_depth = (
             #     1.0/(gt_depth*self.depth_paramter[0]+0.0001))*self.depth_paramter[1]
 
-            append_gaussian = self.cover_point(image_info, ground_truth, scaled_depth, render_image, alpha_threshold=0.7)
+            append_gaussian = self.cover_point(
+                image_info, ground_truth, scaled_depth, render_image, alpha_threshold=0.7)
 
-            # self.gaussians, status = self.adaption_control(
-            #     self.gaussians, grad_threshold=0.01)
+            self.gaussians, status = self.adaption_control(
+                self.gaussians, grad_threshold=0.01)
             # print(status)
 
             self.gaussians.append(append_gaussian)
@@ -229,10 +247,12 @@ if __name__ == "__main__":
 
         for i in range(batch):
 
-            render_image, gt_depth = splatter(image_info, ground_truth, i % 10 == 0)
+            render_image, gt_depth = splatter(
+                image_info, ground_truth, i % 10 == 0)
             if gt_depth is not None:
                 depth = gt_depth
-                depth = resize_image(depth, render_image.shape[1], render_image.shape[0])
+                depth = resize_image(
+                    depth, render_image.shape[1], render_image.shape[0])
                 depth = depth.to(splatter.device)
                 depth, _ = normalize(depth)
                 depth = maxmin_normalize(depth)
@@ -241,7 +261,8 @@ if __name__ == "__main__":
 
             ground_truth = ground_truth.to(splatter.device)
 
-            optimizer = torch.optim.Adam(splatter.gaussians.parameters(), lr=lr)
+            optimizer = torch.optim.Adam(
+                splatter.gaussians.parameters(), lr=lr)
 
             loss_rgb = l2(render_rgb, ground_truth)
 
