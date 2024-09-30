@@ -34,7 +34,7 @@ class ViewerData:
 
         # dara =[width, height, is_updated]
         self.datas = self.smm.ShareableList(
-            [-1, -1, 100, 100, False, False, False, 8, False, 2, 0, False, "dataset/nerfstudio/poster"])
+            [-1, -1, 100, 100, False, False, False, 8, False, 1, 0, False, "dataset/nerfstudio/poster"])
         self.position = self.smm.ShareableList([0.0, 0.0, 0.0])
         self.rotation = self.smm.ShareableList([0.0, 0.0, 0.0])
 
@@ -300,26 +300,26 @@ class Viewer:
 
                     self.shareData.grid = info["grid"]
                     self.shareData.play = info["play"]
-                    self.shareData.preview = info["preview"]
-                    self.shareData.is_recording = info["isRecording"]
                     self.shareData.dataset = info["dataset"]
+                    self.shareData.preview = info["preview"]
                     self.shareData.downsample = int(info["downsample"])
+                    self.shareData.is_recording = info["isRecording"]
 
                     self.shareData.release()
 
-                    # data = json.dumps({"position": self.shareData.position})
-                    # channel.send(data)
+                    data = json.dumps({"stage": self.shareData.stage})
+                    channel.send(data)
                 else:
                     raise ValueError("Invalid message")
 
-        @pc.on("connectionstatechange")
+        @ pc.on("connectionstatechange")
         async def on_connectionstatechange():
             log_info("Connection state is %s", pc.connectionState)
             if pc.connectionState == "failed":
                 await pc.close()
                 pcs.discard(pc)
 
-        @pc.on("track")
+        @ pc.on("track")
         def on_track(track):
             log_info("Track %s received", track.kind)
             print(track.kind)
@@ -332,7 +332,7 @@ class Viewer:
                 pc.addTrack(TrainRenderTrack(
                     relay.subscribe(track), data=self.shareData))
 
-            @track.on("ended")
+            @ track.on("ended")
             async def on_ended():
                 log_info("Track %s ended", track.kind)
                 await recorder.stop()

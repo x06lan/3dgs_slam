@@ -205,7 +205,7 @@ class Tracker:
             elif self.shareData.stage == 1:
                 if self.shareData.is_recording == False:
                     # stop record, start colmap
-                    self.resize_record_images()
+                    # self.resize_record_images()
                     self.shareData.stage = 2
                     self.shareData.release()
                     continue
@@ -232,6 +232,7 @@ class Tracker:
             # TRAIN
             elif self.shareData.stage == 3 and self.shareData.play:
                 if not self.is_loaded_dataset:
+
                     grid = self.shareData.grid
                     downsample = self.shareData.downsample
                     self.load_dataset(False, grid, downsample)
@@ -250,24 +251,28 @@ class Tracker:
                 ground_truth = self.dataset.images[self.train_progress].to(
                     torch.float).to(self.trainer.splatter.device) / 255
                 image_info = self.dataset.image_info[self.train_progress]
+
                 self.datamanager.add_image(ground_truth, image_info)
-                print(
-                    f"train {self.train_progress}/{len(self.dataset.images)}")
 
                 for i, (gt, info) in enumerate(self.datamanager.get_train_data()):
                     cover = i == 0
                     grad = True
                     render_image, status = self.trainer.step(
                         image_info=info, ground_truth=gt, cover=cover, grad=grad)
+                    print(
+                        f"train {self.train_progress}/{len(self.dataset.images)}", status)
                     # print(i, info.id, status)
-                    if self.shareData.render_width != render_image.shape[1] or self.shareData.render_height != render_image.shape[0]:
-                        self.shareData.render_width = render_image.shape[1]
-                        self.shareData.render_height = render_image.shape[0]
                     display_image = render_image[..., :3]
+
                 self.train_progress += 1
 
                 display_image = (display_image).detach().cpu().numpy()
                 display_image = (display_image * 255).astype(np.uint8)
+
+                if self.shareData.render_width != display_image.shape[1] or self.shareData.render_height != display_image.shape[0]:
+                    self.shareData.render_width = display_image.shape[1]
+                    self.shareData.render_height = display_image.shape[0]
+
                 self.shareData.render_width = display_image.shape[1]
                 self.shareData.render_height = display_image.shape[0]
                 share_image = self.shareData.render_image
@@ -298,7 +303,6 @@ class Tracker:
                     self.shareData.render_width = render_image.shape[1]
                     self.shareData.render_height = render_image.shape[0]
                 display_image = render_image[..., :3]
-                save_image("output.png", display_image)
 
                 display_image = (display_image).detach().cpu().numpy()
                 display_image = (display_image * 255).astype(np.uint8)
@@ -307,7 +311,7 @@ class Tracker:
 
             self.shareData.image_update = False
             self.shareData.release()
-            time.sleep(0.05)
+            time.sleep(0.015)
 
 
 if __name__ == "__main__":

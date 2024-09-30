@@ -1,10 +1,10 @@
 ARG UBUNTU_VERSION=22.04
 ARG NVIDIA_CUDA_VERSION=11.8.0
+ARG CUDA_ARCHITECTURES=86
 
 FROM nvidia/cuda:${NVIDIA_CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} as builder
 
 # COLMAP version and CUDA architectures.
-ARG CUDA_ARCHITECTURES=86
 ENV QT_XCB_GL_INTEGRATION=xcb_egl
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -48,30 +48,27 @@ RUN pip3 install torch torchvision torchaudio xformers --index-url https://downl
 
 # COLMAP dependencies
 RUN apt-get install -y --no-install-recommends --no-install-suggests \
-        cmake \
-        ninja-build \
-        build-essential \
-        libboost-program-options-dev \
-        libboost-filesystem-dev \
-        libboost-graph-dev \
-        libboost-system-dev \
-        libeigen3-dev \
-        libflann-dev \
-        libfreeimage-dev \
-        libmetis-dev \
-        libgoogle-glog-dev \
-        libgtest-dev \
-        libgmock-dev \
-        libsqlite3-dev \
-        libglew-dev \
-        qtbase5-dev \
-        libqt5opengl5-dev \
-        libcgal-dev \
-        libceres-dev
+    cmake \
+    ninja-build \
+    build-essential \
+    libboost-program-options-dev \
+    libboost-filesystem-dev \
+    libboost-graph-dev \
+    libboost-system-dev \
+    libeigen3-dev \
+    libflann-dev \
+    libfreeimage-dev \
+    libmetis-dev \
+    libgoogle-glog-dev \
+    libgtest-dev \
+    libgmock-dev \
+    libsqlite3-dev \
+    libglew-dev \
+    qtbase5-dev \
+    libqt5opengl5-dev \
+    libcgal-dev \
+    libceres-dev
 
-# git is required to run the COLMAP pybind build D:
-RUN apt-get install -y --no-install-recommends --no-install-suggests \
-    git
 
 # Build and install COLMAP.
 COPY ./colmap ./colmap
@@ -79,15 +76,14 @@ RUN cd ./colmap && \
     mkdir build && \
     cd build && \
     cmake .. -GNinja -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES} \
-        -DCMAKE_INSTALL_PREFIX=/colmap_installed && \
+    -DCMAKE_INSTALL_PREFIX=/colmap_installed && \
     ninja install
 
 # Install python packages
 COPY ./requirements.txt ./requirements.txt
 RUN pip3 install -r requirements.txt 
-RUN pip3 install torchmetrics einops
+RUN pip3 install torchmetrics einops ruff
 RUN cd ./colmap/pycolmap && \
-    sed -i 's/\r$//' generate_stubs.sh && \
     python3 -m pip install .
 
 # Install system libraries required by OpenCV.

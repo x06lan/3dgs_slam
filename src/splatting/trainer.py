@@ -108,8 +108,9 @@ class Trainer:
             # "depth": render_depth[0],
         }
 
-        loss.backward()
-        self.optimizer.step()
+        if not torch.isnan(loss):
+            loss.backward()
+            self.optimizer.step()
 
         return render_image, dump
 
@@ -119,7 +120,7 @@ class Trainer:
 
 if __name__ == "__main__":
     frame = 0
-    downsample = 4
+    downsample = 1
     lr = 0.003
     # lr = 0.0005
     batch = 40

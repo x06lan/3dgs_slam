@@ -174,6 +174,7 @@ class CoverSplatter(Splatter):
 
         render_image = super().forward(image_info)
         if cover:
+            assert render_image.shape[-1] == 5
             assert render_image.shape[:2] == ground_truth.shape[:2]
 
             gt_depth = self.depth_estimator.estimate(
@@ -196,8 +197,8 @@ class CoverSplatter(Splatter):
             append_gaussian = self.cover_point(
                 image_info, ground_truth, scaled_depth, render_image, alpha_threshold=0.7)
 
-            # self.gaussians, status = self.adaption_control(
-            #     self.gaussians, grad_threshold=0.01)
+            self.gaussians, status = self.adaption_control(
+                self.gaussians, grad_threshold=0.01)
             # print(status)
 
             self.gaussians.append(append_gaussian)
