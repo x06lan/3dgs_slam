@@ -101,6 +101,7 @@ function negotiate(config) {
 function start(config) {
     // config.play = true;
     guiParams.play = true;
+    guiParams.isRecording = true;
 
     pc = createPeerConnection(config.useStun);
 
@@ -136,6 +137,8 @@ function start(config) {
                     "grid": guiParams.grid,
                     "preview": guiParams.preview,
                     "play": guiParams.play,
+                    "isRecording": guiParams.isRecording,
+                    "dataset": guiParams.dataset,
                 };
                 // console.log(message)
 
@@ -143,14 +146,11 @@ function start(config) {
             }, 10);
         });
         dc.addEventListener('message', (evt) => {
-            // dataChannelLog.textContent += '< ' + evt.data + '\n';
-            // let data = evt.data.split(',')
             let data = JSON.parse(evt.data)
-            console.log(data)
-            // for (let i = 0; i < data.length && i < 3; i++) {
-            //     currentTranslation[i] = parseFloat(data[i])
-            // }
-
+            guiParams.stage = data["stage"]
+            if (guiParams.stage == 4){
+                guiParams.preview = true
+            }
         });
     }
 
@@ -181,7 +181,6 @@ function start(config) {
 
         const device = config.videoDevice;
         const resolution = config.videoResolution;
-
         constraints.video = Object.keys(videoConstraints).length ? videoConstraints : true;
     }
 
@@ -309,8 +308,6 @@ function threejs() {
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineBasicMaterial({ color: 0x0000ff });
     const line = new THREE.Line(geometry, material);
-
-
 
     scene.add(grid);
     // scene.add(axes);

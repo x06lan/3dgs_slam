@@ -34,7 +34,7 @@ class ViewerData:
 
         # dara =[width, height, is_updated]
         self.datas = self.smm.ShareableList(
-            [-1, -1, 100, 100, False, False, False, 8, False, 2])
+            [-1, -1, 100, 100, False, False, False, 8, False, 1, 0, False, "dataset/nerfstudio/poster"])
         self.position = self.smm.ShareableList([0.0, 0.0, 0.0])
         self.rotation = self.smm.ShareableList([0.0, 0.0, 0.0])
 
@@ -98,6 +98,14 @@ class ViewerData:
     def play(self):
         return self.datas[6]
 
+    @property
+    def stage(self):
+        return self.datas[10]
+
+    @stage.setter
+    def stage(self, value):
+        self.datas[10] = value
+
     @play.setter
     def play(self, value):
         self.datas[6] = value
@@ -125,6 +133,22 @@ class ViewerData:
     @downsample.setter
     def downsample(self, value):
         self.datas[9] = value
+
+    @property
+    def is_recording(self):
+        return self.datas[11]
+
+    @is_recording.setter
+    def is_recording(self, value):
+        self.datas[11] = value
+
+    @property
+    def dataset(self):
+        return self.datas[12]
+
+    @dataset.setter
+    def dataset(self, value):
+        self.datas[12] = value
 
     def require(self):
         self.lock.acquire()
@@ -166,7 +190,7 @@ class TrainRenderTrack(MediaStreamTrack):
         self.shareData.require()
         self.shareData.image_update = True
 
-        if (self.shareData.recive_width != img.shape[1] or self.shareData.recive_height != img.shape[0]):
+        if self.shareData.recive_width != img.shape[1] or self.shareData.recive_height != img.shape[0]:
             self.shareData.recive_width = img.shape[1]
             self.shareData.recive_height = img.shape[0]
         share_image = self.shareData.recive_image
@@ -276,46 +300,45 @@ class Viewer:
 
                     self.shareData.grid = info["grid"]
                     self.shareData.play = info["play"]
+                    self.shareData.dataset = info["dataset"]
                     self.shareData.preview = info["preview"]
+                    self.shareData.downsample = int(info["downsample"])
+                    self.shareData.is_recording = info["isRecording"]
 
                     self.shareData.release()
 
-                    # data = json.dumps({"position": self.shareData.position})
-                    # channel.send(data)
+                    data = json.dumps({"stage": self.shareData.stage})
+                    channel.send(data)
                 else:
                     raise ValueError("Invalid message")
 
-        @pc.on("connectionstatechange")
+        @ pc.on("connectionstatechange")
         async def on_connectionstatechange():
             log_info("Connection state is %s", pc.connectionState)
             if pc.connectionState == "failed":
                 await pc.close()
                 pcs.discard(pc)
 
-        @pc.on("track")
+        @ pc.on("track")
         def on_track(track):
             log_info("Track %s received", track.kind)
             print(track.kind)
             if track.kind == "audio":
                 # pc.addTrack(player.audio)
-                pc.addTrack(
-                    RenderTrack(
-                        relay.subscribe(track), data=self.shareData
-                    )
-                )
+                pc.addTrack(RenderTrack(
+                    relay.subscribe(track), data=self.shareData))
                 pass
             elif track.kind == "video":
-                pc.addTrack(
-                    TrainRenderTrack(
-                        relay.subscribe(track), data=self.shareData
-                    )
-                )
+                pc.addTrack(TrainRenderTrack(
+                    relay.subscribe(track), data=self.shareData))
 
             @ track.on("ended")
             async def on_ended():
                 log_info("Track %s ended", track.kind)
                 await recorder.stop()
+
             pass
+
         # handle offer
         await pc.setRemoteDescription(offer)
         await recorder.start()
@@ -326,15 +349,17 @@ class Viewer:
 
         return web.Response(
             content_type="application/json",
-            text=json.dumps(
-                {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type}
-            ),
+            text=json.dumps({"sdp": pc.localDescription.sdp,
+                            "type": pc.localDescription.type}),
         )
 
-    def run(self, host, port,):
-        web.run_app(
-            self.app, access_log=None, host=host, port=port, ssl_context=None
-        )
+    def run(
+        self,
+        host,
+        port,
+    ):
+        web.run_app(self.app, access_log=None, host=host,
+                    port=port, ssl_context=None)
         pass
 
 

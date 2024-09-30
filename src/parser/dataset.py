@@ -50,32 +50,32 @@ def dataset_factory(settings):
     path = None
     is_color = None  # used for kitti datasets
 
-    type = settings['type']
-    name = settings['name']
+    type = settings["type"]
+    name = settings["name"]
 
-    path = settings['base_path']
+    path = settings["base_path"]
     path = os.path.expanduser(path)
 
-    if 'associations' in settings:
-        associations = settings['associations']
-    if 'is_color' in settings:
-        is_color = settings['is_color'].lower() == 'true'
+    if "associations" in settings:
+        associations = settings["associations"]
+    if "is_color" in settings:
+        is_color = settings["is_color"].lower() == "true"
 
     dataset = None
-    if type == 'kitti':
+    if type == "kitti":
         dataset = KittiDataset(path, name, associations, DatasetType.KITTI)
         dataset.set_is_color(is_color)
-    if type == 'tum':
+    if type == "tum":
         dataset = TumDataset(path, name, associations, DatasetType.TUM)
-    if type == 'video':
+    if type == "video":
         dataset = VideoDataset(path, name, DatasetType.VIDEO)
-    if type == 'folder':
+    if type == "folder":
         fps = 10  # a default value
-        if 'fps' in settings:
-            fps = int(settings['fps'])
+        if "fps" in settings:
+            fps = int(settings["fps"])
         dataset = FolderDataset(
             path, name, fps, associations, DatasetType.FOLDER)
-    if type == 'live':
+    if type == "live":
         dataset = LiveDataset(path, name, associations, DatasetType.LIVE)
 
     return dataset
@@ -108,8 +108,8 @@ class Dataset(object):
                 return img
         except:
             img = None
-            raise IOError('Cannot open dataset: ',
-                          self.name, ', path: ', self.path)
+            raise IOError("Cannot open dataset: ",
+                          self.name, ", path: ", self.path)
             return img
 
     def getTimestamp(self):
@@ -128,20 +128,20 @@ class Dataset(object):
 class VideoDataset(Dataset):
     def __init__(self, path, name, associations=None, dataType=DatasetType.VIDEO):
         super().__init__(path, name, None, dataType)
-        self.filename = path + '/' + name
+        self.filename = path + "/" + name
         # print('video: ', self.filename)
         self.cap = cv2.VideoCapture(self.filename)
         if not self.cap.isOpened():
-            raise IOError('Cannot open movie file: ', self.filename)
+            raise IOError("Cannot open movie file: ", self.filename)
         else:
-            print('Processing Video Input')
+            print("Processing Video Input")
             self.num_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
             self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             self.fps = float(self.cap.get(cv2.CAP_PROP_FPS))
-            self.Ts = 1./self.fps
-            print('num frames: ', self.num_frames)
-            print('fps: ', self.fps)
+            self.Ts = 1.0 / self.fps
+            print("num frames: ", self.num_frames)
+            print("fps: ", self.fps)
         self.is_init = False
 
     def getImage(self, frame_id):
@@ -152,10 +152,10 @@ class VideoDataset(Dataset):
         self.is_init = True
         ret, image = self.cap.read()
         # self._timestamp = time.time()  # rough timestamp if nothing else is available
-        self._timestamp = float(self.cap.get(cv2.CAP_PROP_POS_MSEC)*1000)
+        self._timestamp = float(self.cap.get(cv2.CAP_PROP_POS_MSEC) * 1000)
         self._next_timestamp = self._timestamp + self.Ts
         if ret is False:
-            print('ERROR while reading from file: ', self.filename)
+            print("ERROR while reading from file: ", self.filename)
             return None
         return image
 
@@ -164,21 +164,21 @@ class LiveDataset(Dataset):
     def __init__(self, path, name, associations=None, type=DatasetType.VIDEO):
         super().__init__(path, name, None, associations, type)
         self.camera_num = name  # use name for camera number
-        print('opening camera device: ', self.camera_num)
+        print("opening camera device: ", self.camera_num)
         self.cap = cv2.VideoCapture(self.camera_num)
         if not self.cap.isOpened():
-            raise IOError('Cannot open camera')
+            raise IOError("Cannot open camera")
         else:
             self.fps = float(self.cap.get(cv2.CAP_PROP_FPS))
-            self.Ts = 1./self.fps
-            print('fps: ', self.fps)
+            self.Ts = 1.0 / self.fps
+            print("fps: ", self.fps)
 
     def getImage(self, frame_id):
         ret, image = self.cap.read()
         self._timestamp = time.time()  # rough timestamp if nothing else is available
         self._next_timestamp = self._timestamp + self.Ts
         if ret is False:
-            print('ERROR in reading from camera: ', self.camera_num)
+            print("ERROR in reading from camera: ", self.camera_num)
         return image
 
 
@@ -188,21 +188,21 @@ class FolderDataset(Dataset):
         if fps is None:
             fps = 10  # default value
         self.fps = fps
-        print('fps: ', self.fps)
-        self.Ts = 1./self.fps
+        print("fps: ", self.fps)
+        self.Ts = 1.0 / self.fps
         self.skip = 1
         self.listing = []
         self.maxlen = 1000000
-        print('Processing Image Directory Input')
-        self.listing = glob.glob(path + '/' + self.name)
+        print("Processing Image Directory Input")
+        self.listing = glob.glob(path + "/" + self.name)
         self.listing.sort()
-        self.listing = self.listing[::self.skip]
+        self.listing = self.listing[:: self.skip]
         # print('list of files: ', self.listing)
         self.maxlen = len(self.listing)
         self.i = 0
         if self.maxlen == 0:
-            raise IOError('No images were found in folder: ', path)
-        self._timestamp = 0.
+            raise IOError("No images were found in folder: ", path)
+        self._timestamp = 0.0
 
     def getImage(self, frame_id):
         if self.i == self.maxlen:
@@ -212,7 +212,7 @@ class FolderDataset(Dataset):
         self._timestamp += self.Ts
         self._next_timestamp = self._timestamp + self.Ts
         if img is None:
-            raise IOError('error reading file: ', image_file)
+            raise IOError("error reading file: ", image_file)
         # Increment internal counter.
         self.i = self.i + 1
         return img
@@ -225,29 +225,30 @@ class FolderDatasetParallelStatus:
         self.listing = listing
         self.skip = skip
 
+
 # this is experimental
 
 
 class FolderDatasetParallel(Dataset):
     def __init__(self, path, name, fps=None, associations=None, type=DatasetType.VIDEO):
         super().__init__(path, name, fps, associations, type)
-        print('fps: ', self.fps)
-        self.Ts = 1./self.fps
+        print("fps: ", self.fps)
+        self.Ts = 1.0 / self.fps
         self._timestamp = 0
         self.skip = 1
         self.listing = []
         self.maxlen = 1000000
-        print('Processing Image Directory Input')
-        self.listing = glob.glob(path + '/' + self.name)
+        print("Processing Image Directory Input")
+        self.listing = glob.glob(path + "/" + self.name)
         self.listing.sort()
-        self.listing = self.listing[::self.skip]
+        self.listing = self.listing[:: self.skip]
         # print('list of files: ', self.listing)
         self.maxlen = len(self.listing)
         self.i = 0
         if self.maxlen == 0:
-            raise IOError('No images were found in folder: ', path)
+            raise IOError("No images were found in folder: ", path)
 
-        self.is_running = Value('i', 1)
+        self.is_running = Value("i", 1)
 
         self.folder_status = FolderDatasetParallelStatus(
             self.i, self.maxlen, self.listing, self.skip)
@@ -264,7 +265,7 @@ class FolderDatasetParallel(Dataset):
         self.vp.start()
 
     def quit(self):
-        print('webcam closing...')
+        print("webcam closing...")
         self.is_running.value = 0
         self.vp.join(timeout=3)
 
@@ -283,7 +284,7 @@ class FolderDatasetParallel(Dataset):
         image_file = folder_status.listing[self.i]
         img = cv2.imread(image_file)
         if img is None:
-            raise IOError('error reading file: ', image_file)
+            raise IOError("error reading file: ", image_file)
         # Increment internal counter.
         self.i = self.i + 1
         return img
@@ -304,10 +305,15 @@ class Webcam(object):
         self.current_frame = None
         self.ret = None
 
-        self.is_running = Value('i', 1)
+        self.is_running = Value("i", 1)
         self.q = Queue(maxsize=2)
-        self.vp = Process(target=self._update_frame,
-                          args=(self.q, self.is_running,))
+        self.vp = Process(
+            target=self._update_frame,
+            args=(
+                self.q,
+                self.is_running,
+            ),
+        )
         self.vp.daemon = True
 
     # create thread for capturing images
@@ -315,7 +321,7 @@ class Webcam(object):
         self.vp.start()
 
     def quit(self):
-        print('webcam closing...')
+        print("webcam closing...")
         self.is_running.value = 0
         self.vp.join(timeout=3)
 
@@ -328,7 +334,7 @@ class Webcam(object):
                 if q.full():
                     old_frame = self.q.get()
                 self.q.put(self.current_frame)
-                print('q.size: ', self.q.qsize())
+                print("q.size: ", self.q.qsize())
         time.sleep(0.005)
 
     # get the current frame
@@ -343,52 +349,52 @@ class KittiDataset(Dataset):
     def __init__(self, path, name, associations=None, type=DatasetType.KITTI):
         super().__init__(path, name, 10, associations, type)
         self.fps = 10
-        self.image_left_path = '/image_0/'
-        self.image_right_path = '/image_1/'
+        self.image_left_path = "/image_0/"
+        self.image_right_path = "/image_1/"
         self.timestamps = np.loadtxt(
-            self.path + '/sequences/' + self.name + '/times.txt')
+            self.path + "/sequences/" + self.name + "/times.txt")
         self.max_frame_id = len(self.timestamps)
-        print('Processing KITTI Sequence of lenght: ', len(self.timestamps))
+        print("Processing KITTI Sequence of lenght: ", len(self.timestamps))
 
     def set_is_color(self, val):
         self.is_color = val
         if self.is_color:
-            print('dataset in color!')
-            self.image_left_path = '/image_2/'
-            self.image_right_path = '/image_3/'
+            print("dataset in color!")
+            self.image_left_path = "/image_2/"
+            self.image_right_path = "/image_3/"
 
     def getImage(self, frame_id):
         img = None
         if frame_id < self.max_frame_id:
             try:
-                img = cv2.imread(self.path + '/sequences/' + self.name +
-                                 self.image_left_path + str(frame_id).zfill(6) + '.png')
+                img = cv2.imread(self.path + "/sequences/" + self.name +
+                                 self.image_left_path + str(frame_id).zfill(6) + ".png")
                 self._timestamp = self.timestamps[frame_id]
             except:
-                print('could not retrieve image: ',
-                      frame_id, ' in path ', self.path)
-            if frame_id+1 < self.max_frame_id:
-                self._next_timestamp = self.timestamps[frame_id+1]
+                print("could not retrieve image: ",
+                      frame_id, " in path ", self.path)
+            if frame_id + 1 < self.max_frame_id:
+                self._next_timestamp = self.timestamps[frame_id + 1]
             else:
                 self._next_timestamp = self.timestamps
-        self.is_ok = (img is not None)
+        self.is_ok = img is not None
         return img
 
     def getImage1(self, frame_id):
         img = None
         if frame_id < self.max_frame_id:
             try:
-                img = cv2.imread(self.path + '/sequences/' + self.name +
-                                 self.image_right_path + str(frame_id).zfill(6) + '.png')
+                img = cv2.imread(self.path + "/sequences/" + self.name +
+                                 self.image_right_path + str(frame_id).zfill(6) + ".png")
                 self._timestamp = self.timestamps[frame_id]
             except:
-                print('could not retrieve image: ',
-                      frame_id, ' in path ', self.path)
-            if frame_id+1 < self.max_frame_id:
-                self._next_timestamp = self.timestamps[frame_id+1]
+                print("could not retrieve image: ",
+                      frame_id, " in path ", self.path)
+            if frame_id + 1 < self.max_frame_id:
+                self._next_timestamp = self.timestamps[frame_id + 1]
             else:
                 self._next_timestamp = self.timestamps
-        self.is_ok = (img is not None)
+        self.is_ok = img is not None
         return img
 
 
@@ -396,14 +402,14 @@ class TumDataset(Dataset):
     def __init__(self, path, name, associations, type=DatasetType.TUM):
         super().__init__(path, name, 30, associations, type)
         self.fps = 30
-        print('Processing TUM Sequence')
-        self.base_path = self.path + '/' + self.name + '/'
-        associations_file = self.path + '/' + self.name + '/' + associations
+        print("Processing TUM Sequence")
+        self.base_path = self.path + "/" + self.name + "/"
+        associations_file = self.path + "/" + self.name + "/" + associations
         with open(associations_file) as f:
             self.associations = f.readlines()
             self.max_frame_id = len(self.associations)
         if self.associations is None:
-            sys.exit('ERROR while reading associations file!')
+            sys.exit("ERROR while reading associations file!")
 
     def getImage(self, frame_id):
         img = None
@@ -411,12 +417,12 @@ class TumDataset(Dataset):
             file = self.base_path + \
                 self.associations[frame_id].strip().split()[1]
             img = cv2.imread(file)
-            self.is_ok = (img is not None)
+            self.is_ok = img is not None
             self._timestamp = float(
                 self.associations[frame_id].strip().split()[0])
             if frame_id + 1 < self.max_frame_id:
                 self._next_timestamp = float(
-                    self.associations[frame_id+1].strip().split()[0])
+                    self.associations[frame_id + 1].strip().split()[0])
             else:
                 self._next_timestamp = self.timestamps
         else:
@@ -430,12 +436,12 @@ class TumDataset(Dataset):
             file = self.base_path + \
                 self.associations[frame_id].strip().split()[3]
             img = cv2.imread(file)
-            self.is_ok = (img is not None)
+            self.is_ok = img is not None
             self._timestamp = float(
                 self.associations[frame_id].strip().split()[0])
             if frame_id + 1 < self.max_frame_id:
                 self._next_timestamp = float(
-                    self.associations[frame_id+1].strip().split()[0])
+                    self.associations[frame_id + 1].strip().split()[0])
             else:
                 self._next_timestamp = self.timestamps
         else:
@@ -446,42 +452,42 @@ class TumDataset(Dataset):
 
 class ColmapDataset(Dataset):
     def __init__(self, path, downsample_factor=4):
-        super().__init__(path, "colmap", 0,  DatasetType.COLMAP)
+        super().__init__(path, "colmap", 0, DatasetType.COLMAP)
         self.fps = 30
         self.base_path = self.path
         self.name = "colmap"
         # self.point3d =
-        colmap_path = os.path.join(path, 'colmap/sparse', '0')
+        colmap_path = os.path.join(path, "colmap/sparse", "0")
 
         # only one camera
         self.camera = read_cameras_binary(
-            os.path.join(colmap_path, 'cameras.bin'))
+            os.path.join(colmap_path, "cameras.bin"))
         # take first one
         self.camera = list(self.camera.values())[0]
         self.points3d = read_points3d_binary(
-            os.path.join(colmap_path, 'points3D.bin'))
+            os.path.join(colmap_path, "points3D.bin"))
 
         # somehow image id not start from 0 os use dict
-        self.image_info: dict[int, ImageInfo] = read_images_binary(os.path.join(
-            colmap_path, 'images.bin'))
+        self.image_info: dict[int, ImageInfo] = read_images_binary(
+            os.path.join(colmap_path, "images.bin"))
 
         self.downsample_factor: Union[1, 2, 4, 8] = downsample_factor
 
-        img_dir = os.path.join(
-            path, 'images')
+        img_dir = os.path.join(path, "images")
         if self.downsample_factor != 1:
-            img_dir = os.path.join(
-                path, f'images_{self.downsample_factor}')
+            img_dir = os.path.join(path, f"images_{self.downsample_factor}")
+        print(f"dataset: {img_dir}")
 
         self.images = []
         img_ids = sorted([im.id for im in self.image_info.values()])
 
-        print('Loading images...')
+        print("Loading images...")
         for img_id in tqdm(img_ids):
             img_filename = self.image_info[img_id].name
             img_path = os.path.join(img_dir, img_filename)
             img = loadImage(img_path)
             self.images.append(img)
+        print(len(self.images))
 
         self.image_info: list[ImageInfo] = [
             self.image_info[img_id] for img_id in img_ids]

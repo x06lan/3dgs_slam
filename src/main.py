@@ -2,11 +2,17 @@ import cv2
 import time
 import torch
 import psutil
+import os
+import shutil
 import numpy as np
+from tqdm import tqdm
 import threading
 import multiprocessing
 import multiprocessing.shared_memory
 
+import enlighten
+from pathlib import Path
+import pycolmap
 
 from utils.camera import Camera
 from utils.function import resize_image, save_image, euler_to_quaternion, convert_z_up_to_y_up
@@ -16,19 +22,21 @@ from viewer.server import Viewer, ViewerData
 
 from splatting.trainer import Trainer
 
+# TODO: send stage to viewer
+
 
 def close_port(port):
     from psutil import process_iter
     from signal import SIGKILL  # or SIGKILL
 
     for proc in process_iter():
-        for conns in proc.net_connections(kind='inet'):
+        for conns in proc.net_connections(kind="inet"):
             if conns.laddr.port == port:
-                print('Process ID: ', proc.pid)
+                print("Process ID: ", proc.pid)
                 proc.send_signal(SIGKILL)  # or SIGKILL
 
 
-class DataManager():
+class DataManager:
     def __init__(self, batch=40, stride=5):
         self.data = []
         self.batch = batch
@@ -42,93 +50,245 @@ class DataManager():
 
     def get_train_data(self):
         length = len(self.data)
-        length = min(length, self.batch*self.stride)
+        length = min(length, self.batch * self.stride)
 
-        return self.data[0:length:self.stride]
+        return self.data[0: length: self.stride]
 
 
-class Tracker():
-    def __init__(self, data):
+class Colmap:
+    def __init__(self, data, data_dir="record"):
         self.shareData: ViewerData = data
-        self.inited = False
-        self.camera = None
-        self.img_id = 1
+        self.dir = data_dir
 
+    def run(self):
+        while True:
+            self.shareData.require()
+            if self.shareData.stage == 2:
+                self.shareData.release()
+                print("COLMAP START")
+                output_path = Path(self.dir) / "colmap"
+                image_path = Path(self.dir) / "images"
+                sparse_path = output_path / "sparse"
+                database_path = output_path / "database.db"
+
+                output_path.mkdir(exist_ok=True)
+                pycolmap.extract_features(database_path, image_path)
+                pycolmap.match_exhaustive(database_path)
+                num_images = pycolmap.Database(database_path).num_images
+                with enlighten.Manager() as manager:
+                    with manager.counter(total=num_images, desc="Images registered:") as pbar:
+                        pbar.update(0, force=True)
+                        recs = pycolmap.incremental_mapping(
+                            database_path,
+                            image_path,
+                            sparse_path,
+                            initial_image_pair_callback=lambda: pbar.update(2),
+                            next_image_callback=lambda: pbar.update(1),
+                        )
+                print("COLMAP FINISH")
+
+                # end colmap, to train
+                self.shareData.require()
+                self.shareData.stage = 3
+                self.shareData.release()
+                break
+            self.shareData.release()
+            time.sleep(0.05)
+
+
+class Tracker:
+    def __init__(self, data, data_dir="record"):
+        self.shareData: ViewerData = data
         self.preview = True
         self.batch = 10
         self.lr = 0.005
         self.stride = 5
 
+        self.data_dir = data_dir
+        self.run_dataset = False
+        self.dataset_dir = self.data_dir
+        # self.dataset_dir = "dataset/nerfstudio/poster"
+        # self.dataset_dir = "dataset/nerfstudio/stump"
+        # self.dataset_dir = "dataset/nerfstudio/aspen"
+        # self.dataset_dir = "dataset/nerfstudio/redwoods2"
+        self.ckpt = "3dgs_slam_ckpt.pth"
+        self.reset(clear_dir=False)
+
+    def reset(self, clear_dir=False):
+        self.camera = None
         self.datamanager = DataManager(batch=self.batch, stride=self.stride)
 
-    def init(self, preview, downsample=4, grid=16):
-        self.downsample = downsample
-        self.grid = grid
-        if preview:
-            self.dataset = ColmapDataset("dataset/nerfstudio/poster",
-                                         # self.dataset=ColmapDataset("dataset/nerfstudio/stump",
-                                         # dataset = ColmapDataset("dataset/nerfstudio/aspen",
-                                         # dataset = ColmapDataset("dataset/nerfstudio/redwoods2",
-                                         # dataset = ColmapDataset("dataset/nerfstudio/person",
-                                         downsample_factor=self.downsample)
-            self.camera = self.dataset.camera
-            self.trainer = Trainer(ckpt="3dgs_slam_ckpt.pth",
-                                   camera=self.camera, lr=self.lr, downsample=self.downsample, distance=self.grid)
-        else:
+        self.is_loaded_dataset = False
+        self.train_progress = 1
+        self.record_count = 0
 
-            width = self.shareData.recive_width
-            height = self.shareData.recive_height
-            print(width, height)
-            self.camera = Camera(width=width, height=height, cx=width/2,
-                                 cy=height/2, fx=width/2, fy=height/2, distortParams=[0, 0, 0, 0, 0], fps=30)
-            # self.dataset = ColmapDataset("dataset/nerfstudio/poster",
-            # self.dataset = ColmapDataset("dataset/nerfstudio/stump",
-            # self.dataset = ColmapDataset("dataset/nerfstudio/aspen",
-            # self.dataset = ColmapDataset("dataset/nerfstudio/redwoods2",
-            # self.dataset = ColmapDataset("dataset/nerfstudio/person",
-            #                              downsample_factor=self.downsample)
-            # self.camera = self.dataset.camera
+        if clear_dir:
+            self.clear_data_dir()
+
+    def clear_data_dir(self):
+        if os.path.exists(self.data_dir):
+            shutil.rmtree(self.data_dir)
+        os.makedirs(self.data_dir)
+        os.makedirs(self.data_dir + "/images")
+
+    def load_dataset(self, preview, grid, downsample=4):
+        self.grid = grid
+        self.downscale_dataset(downsample)
+        if preview:
+            self.dataset = ColmapDataset(
+                self.dataset_dir, downsample_factor=downsample)
+            self.camera = self.dataset.camera
+            self.trainer = Trainer(ckpt=self.ckpt, camera=self.camera,
+                                   lr=self.lr, downsample=downsample, distance=self.grid)
+        else:
+            # print(width, height)
+            self.dataset = ColmapDataset(
+                self.dataset_dir, downsample_factor=downsample)
+            self.camera = self.dataset.camera
             self.trainer = Trainer(
-                camera=self.camera, lr=self.lr, downsample=1)
+                camera=self.camera, lr=self.lr, downsample=downsample)
+
+    def downscale_dataset(self, downscale):
+        oringin_dir = f"{self.dataset_dir}/images"
+        new_dir = f"{self.dataset_dir}/images_{downscale}"
+        if os.path.exists(new_dir) or downscale == 1:
+            return
+        os.mkdir(new_dir)
+        for filename in tqdm(os.listdir(oringin_dir)):
+            img = cv2.imread(os.path.join(oringin_dir, filename))
+            img = cv2.resize(
+                img, (img.shape[1] // downscale, img.shape[0] // downscale))
+            cv2.imwrite(os.path.join(new_dir, filename), img)
+
+    def resize_record_images(self):
+        min_width = 9999
+        min_height = 9999
+        for filename in os.listdir(f"{self.data_dir}/images"):
+            img = cv2.imread(f"{self.data_dir}/images/{filename}")
+            min_width = min(min_width, img.shape[1])
+            min_height = min(min_height, img.shape[0])
+
+        for filename in os.listdir(f"{self.data_dir}/images"):
+            img = cv2.imread(f"{self.data_dir}/images/{filename}")
+            img = cv2.resize(img, (min_width, min_height))
+            cv2.imwrite(f"{self.data_dir}/images/{filename}", img)
 
     def run(self):
-
         while True:
-
             self.shareData.require()
-            if (self.shareData.play):
-                if (not self.inited):
 
-                    print(self.shareData.preview, self.shareData.image_update)
+            # IDLE
+            if self.shareData.stage == 0:
+                # start record
+                if self.shareData.play:
+                    if self.shareData.preview:
+                        self.shareData.stage = 4
 
-                    if (not self.shareData.preview and self.shareData.image_update):
+                        grid = self.shareData.grid
+                        downsample = self.shareData.downsample
+                        self.dataset_dir = self.shareData.dataset
 
-                        self.inited = True
-                        self.init(self.shareData.preview,
-                                  self.shareData.downsample, grid=16)
-                    elif (self.shareData.preview):
+                        self.load_dataset(True, grid, downsample)
+                        self.shareData.release()
+                        continue
 
-                        self.inited = True
-                        self.init(self.shareData.preview,
-                                  self.shareData.downsample, grid=16)
+                    elif self.shareData.dataset == "record":
+                        self.reset(clear_dir=True)
+                        self.shareData.stage = 1
+                    else:
+                        self.shareData.stage = 3
+                        self.dataset_dir = self.shareData.dataset
+                        self.shareData.release()
+                        continue
 
-            elif (not self.inited):
+            # RECORD
+            elif self.shareData.stage == 1:
+                if self.shareData.is_recording == False:
+                    # stop record, start colmap
+                    # self.resize_record_images()
+                    self.shareData.stage = 2
+                    self.shareData.release()
+                    continue
+
+                if self.shareData.image_update:
+                    image = self.shareData.recive_image
+                    save_image(
+                        f"{self.data_dir}/images/{self.record_count}.png", image)
+                    print(f"record {self.record_count}: {image.shape}")
+                    self.record_count += 1
+
+                    self.shareData.render_height = image.shape[0]
+                    self.shareData.render_width = image.shape[1]
+                    share_image = self.shareData.render_image
+                    share_image[:] = image[:]
+
+                    self.shareData.image_update = False
+
+            # COLMAP
+            elif self.shareData.stage == 2:
                 self.shareData.release()
                 continue
 
-            display_image = None
+            # TRAIN
+            elif self.shareData.stage == 3 and self.shareData.play:
+                if not self.is_loaded_dataset:
 
-            if self.shareData.preview:
+                    grid = self.shareData.grid
+                    downsample = self.shareData.downsample
+                    self.load_dataset(False, grid, downsample)
+                    self.is_loaded_dataset = True
+                    print("TRAIN")
 
+                if self.train_progress == len(self.dataset.images):
+                    # finish train, to preview
+                    # self.trainer.splatter.save_ckpt(self.ckpt)
+                    self.shareData.stage = 4
+                    self.shareData.release()
+                    print("PREVIEW")
+                    continue
+
+                display_image = None
+                ground_truth = self.dataset.images[self.train_progress].to(
+                    torch.float).to(self.trainer.splatter.device) / 255
+                image_info = self.dataset.image_info[self.train_progress]
+
+                self.datamanager.add_image(ground_truth, image_info)
+
+                for i, (gt, info) in enumerate(self.datamanager.get_train_data()):
+                    cover = i == 0
+                    grad = True
+                    render_image, status = self.trainer.step(
+                        image_info=info, ground_truth=gt, cover=cover, grad=grad)
+                    print(
+                        f"train {self.train_progress}/{len(self.dataset.images)}", status)
+                    # print(i, info.id, status)
+                    display_image = render_image[..., :3]
+
+                self.train_progress += 1
+
+                display_image = (display_image).detach().cpu().numpy()
+                display_image = (display_image * 255).astype(np.uint8)
+
+                if self.shareData.render_width != display_image.shape[1] or self.shareData.render_height != display_image.shape[0]:
+                    self.shareData.render_width = display_image.shape[1]
+                    self.shareData.render_height = display_image.shape[0]
+
+                self.shareData.render_width = display_image.shape[1]
+                self.shareData.render_height = display_image.shape[0]
+                share_image = self.shareData.render_image
+                share_image[:] = display_image[:]
+
+            # PREVIEW
+            elif self.shareData.stage == 4 and self.shareData.play:
                 # ground_truth = torch.from_numpy(
                 # self.shareData.recive_image)
                 qvec = euler_to_quaternion(
-                    self.shareData.rotation[2]+180, self.shareData.rotation[1]+180, self.shareData.rotation[0]+180)
+                    self.shareData.rotation[2] + 180, self.shareData.rotation[1] + 180, self.shareData.rotation[0] + 180)
                 # rotate 90 degree
                 # qvec = convert_z_up_to_y_up(qvec)
-                tvec = torch.tensor(list(self.shareData.position)).to(torch.float).to(
-                    self.trainer.splatter.device)
-                print(tvec)
+                tvec = torch.tensor(list(self.shareData.position)).to(
+                    torch.float).to(self.trainer.splatter.device)
+                # print(tvec)
                 # tvec = torch.zeros(3).to(self.trainer.splatter.device)
 
                 ground_truth = None
@@ -137,53 +297,21 @@ class Tracker():
                 image_info.tvec = tvec
                 cover = False
                 grad = False
-                render_image, status = self.trainer.step(image_info=image_info,
-                                                         ground_truth=ground_truth, cover=cover, grad=grad)
-                if (self.shareData.render_width != render_image.shape[1] or self.shareData.render_height != render_image.shape[0]):
+                render_image, status = self.trainer.step(
+                    image_info=image_info, ground_truth=ground_truth, cover=cover, grad=grad)
+                if self.shareData.render_width != render_image.shape[1] or self.shareData.render_height != render_image.shape[0]:
                     self.shareData.render_width = render_image.shape[1]
                     self.shareData.render_height = render_image.shape[0]
                 display_image = render_image[..., :3]
-                save_image("output.png", display_image)
 
-            else:
-                id = self.img_id % (200)+1
-
-                if not self.shareData.image_update:
-                    self.shareData.release()
-                    continue
-                recive_image = self.shareData.recive_image
-                qvec = euler_to_quaternion(
-                    self.shareData.rotation[0], self.shareData.rotation[1], self.shareData.rotation[2])
-                qvec = torch.from_numpy(qvec).to(self.trainer.splatter.device)
-
-                ground_truth = torch.from_numpy(recive_image)
-                ground_truth = ground_truth.to(torch.float).to(
-                    self.trainer.splatter.device)/255
-
-                image_info = ImageInfo(qvec=qvec)
-                self.datamanager.add_image(ground_truth, image_info)
-
-                for i, (gt, info) in enumerate(self.datamanager.get_train_data()):
-                    cover = (i == 0)
-                    grad = True
-                    render_image, status = self.trainer.step(image_info=info,
-                                                             ground_truth=gt, cover=cover, grad=grad)
-                    # print(i, info.id, status)
-                    if (self.shareData.render_width != render_image.shape[1] or self.shareData.render_height != render_image.shape[0]):
-                        self.shareData.render_width = render_image.shape[1]
-                        self.shareData.render_height = render_image.shape[0]
-                    display_image = render_image[..., :3]
-                    print(status)
-                self.img_id += 1
-
-            display_image = (display_image).detach().cpu().numpy()
-            display_image = (display_image*255).astype(np.uint8)
-            share_image = self.shareData.render_image
-            share_image[:] = display_image[:]
+                display_image = (display_image).detach().cpu().numpy()
+                display_image = (display_image * 255).astype(np.uint8)
+                share_image = self.shareData.render_image
+                share_image[:] = display_image[:]
 
             self.shareData.image_update = False
             self.shareData.release()
-            time.sleep(0.05)
+            time.sleep(0.015)
 
 
 if __name__ == "__main__":
@@ -193,16 +321,17 @@ if __name__ == "__main__":
     data = ViewerData()
     viewer = Viewer(data=data)
     tracker = Tracker(data)
+    colmap = Colmap(data)
 
     viewer_thread = multiprocessing.Process(
         target=viewer.run, args=("0.0.0.0", 8000))
-    tracker_thread = multiprocessing.Process(
-        target=tracker.run, args=())
+    tracker_thread = multiprocessing.Process(target=tracker.run, args=())
+    colmap_thread = multiprocessing.Process(target=colmap.run, args=())
 
     viewer_thread.start()
     tracker_thread.start()
-    # log_thread.start()
+    colmap_thread.start()
 
     viewer_thread.join()
     tracker_thread.join()
-    # log_thread.join()
+    colmap_thread.join()

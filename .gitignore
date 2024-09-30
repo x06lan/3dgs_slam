@@ -172,3 +172,10 @@ src/depth_estimator/depth_anything/checkpoints/*
 # save model
 *.pth
 /bin
+
+record
+record_dataset
+ug_note.md
+output.jpg
+.vscode
+colmap
