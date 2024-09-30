@@ -24,7 +24,7 @@ from splatting.trainer import Trainer
 
 # TODO: run dataset
 
-SKIP_COLMAP = False
+SKIP_COLMAP = True
 
 
 def close_port(port):
@@ -146,7 +146,7 @@ class Tracker:
             # print(width, height)
             self.dataset = ColmapDataset(self.dataset_dir, downsample_factor=downsample)
             self.camera = self.dataset.camera
-            self.trainer = Trainer(camera=self.camera, lr=self.lr, downsample=1)
+            self.trainer = Trainer(camera=self.camera, lr=self.lr, downsample=downsample)
 
     def downscale_dataset(self, downscale):
         oringin_dir = f"{self.dataset_dir}/images"
@@ -163,7 +163,7 @@ class Tracker:
         while True:
             self.shareData.require()
             # IDLE
-            if SKIP_COLMAP:
+            if SKIP_COLMAP and self.shareData.stage == 0:
                 self.shareData.stage = 3
 
             if self.shareData.stage == 0 and self.shareData.play:
@@ -202,8 +202,8 @@ class Tracker:
                     preview = False
                     grid = self.shareData.grid
                     downsample = self.shareData.downsample
-                    downsample = 1
                     self.load_dataset(preview, grid, downsample)
+                    self.is_loaded_dataset = True
 
                 if self.train_progress == len(self.dataset.images):
                     # finish train, to preview
@@ -213,7 +213,7 @@ class Tracker:
                     continue
 
                 display_image = None
-                ground_truth = self.dataset.images[self.train_progress]
+                ground_truth = self.dataset.images[self.train_progress].to(torch.float).to(self.trainer.splatter.device) / 255
                 image_info = self.dataset.image_info[self.train_progress]
                 print(image_info)
                 self.datamanager.add_image(ground_truth, image_info)
@@ -230,8 +230,11 @@ class Tracker:
                     print(status)
                 self.train_progress += 1
 
+                print(display_image.shape)
                 display_image = (display_image).detach().cpu().numpy()
                 display_image = (display_image * 255).astype(np.uint8)
+                self.shareData.render_width = display_image.shape[1]
+                self.shareData.render_height = display_image.shape[0]
                 share_image = self.shareData.render_image
                 share_image[:] = display_image[:]
 
@@ -243,7 +246,7 @@ class Tracker:
                 # rotate 90 degree
                 # qvec = convert_z_up_to_y_up(qvec)
                 tvec = torch.tensor(list(self.shareData.position)).to(torch.float).to(self.trainer.splatter.device)
-                print(tvec)
+                # print(tvec)
                 # tvec = torch.zeros(3).to(self.trainer.splatter.device)
 
                 ground_truth = None
