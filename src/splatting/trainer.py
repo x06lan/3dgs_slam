@@ -25,12 +25,14 @@ class Trainer:
 
         self.downsample = downsample
 
-        self.splatter = CoverSplatter(load_ckpt=ckpt, downsample=self.downsample, grid_downsample=distance)
+        self.splatter = CoverSplatter(
+            load_ckpt=ckpt, downsample=self.downsample, grid_downsample=distance)
 
         if camera is not None:
             self.splatter.set_camera(camera)
 
-        self.ssim = StructuralSimilarityIndexMeasure(reduction="elementwise_mean").to(self.splatter.device)
+        self.ssim = StructuralSimilarityIndexMeasure(
+            reduction="elementwise_mean").to(self.splatter.device)
 
         self.l1 = nn.L1Loss()
         self.l2 = nn.MSELoss()
@@ -47,7 +49,8 @@ class Trainer:
         ssim_weight = 0.7
 
         # map B,H,W,C to B,C,H,W
-        ssim = self.ssim(source.unsqueeze(0).permute(0, 3, 1, 2), target.unsqueeze(0).permute(0, 3, 1, 2))
+        ssim = self.ssim(source.unsqueeze(0).permute(
+            0, 3, 1, 2), target.unsqueeze(0).permute(0, 3, 1, 2))
         ssim_loss = 1 - ssim
 
         l2_loss = self.l2(source, target)
@@ -59,20 +62,24 @@ class Trainer:
 
         # assert ground_truth.device == self.splatter.device
 
-        self.optimizer = torch.optim.Adam(self.splatter.gaussians.parameters(), lr=self.lr, betas=(0.9, 0.99))
+        self.optimizer = torch.optim.Adam(
+            self.splatter.gaussians.parameters(), lr=self.lr, betas=(0.9, 0.99))
         self.optimizer.zero_grad()
 
         if not grad:
             with torch.no_grad():
-                render_image, gt_depth = self.splatter(image_info, ground_truth, cover)
+                render_image, gt_depth = self.splatter(
+                    image_info, ground_truth, cover)
                 return render_image, {}
         else:
-            render_image, gt_depth = self.splatter(image_info, ground_truth, cover)
+            render_image, gt_depth = self.splatter(
+                image_info, ground_truth, cover)
 
             if gt_depth is not None and image_info.id not in self.depth_cache:
 
                 # resize gt_depth to match render_image
-                gt_depth = resize_image(gt_depth, render_image.shape[1], render_image.shape[0])
+                gt_depth = resize_image(
+                    gt_depth, render_image.shape[1], render_image.shape[0])
 
                 self.depth_cache[image_info.id] = gt_depth
 
@@ -151,7 +158,8 @@ if __name__ == "__main__":
         frame = img_id
 
         ground_truth = dataset.images[frame]
-        ground_truth = ground_truth.to(torch.float).to(trainer.splatter.device) / 255
+        ground_truth = ground_truth.to(torch.float).to(
+            trainer.splatter.device) / 255
 
         image_info = dataset.image_info[frame]
         # print(image_info.id)
@@ -175,7 +183,8 @@ if __name__ == "__main__":
                     grad = True
                     cover = (i == 0) and (current == info.id)
 
-                render_image, status = trainer.step(image_info=info, ground_truth=gt, cover=cover, grad=grad)
+                render_image, status = trainer.step(
+                    image_info=info, ground_truth=gt, cover=cover, grad=grad)
                 # print(render_image.shape)
 
                 bar.set_postfix(status)

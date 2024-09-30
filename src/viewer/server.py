@@ -33,7 +33,8 @@ class ViewerData:
         self.render_image_raw = self.smm.SharedMemory(size=image.nbytes)
 
         # dara =[width, height, is_updated]
-        self.datas = self.smm.ShareableList([-1, -1, 100, 100, False, False, False, 8, False, 2, 0, False, "dataset/nerfstudio/poster"])
+        self.datas = self.smm.ShareableList(
+            [-1, -1, 100, 100, False, False, False, 8, False, 2, 0, False, "dataset/nerfstudio/poster"])
         self.position = self.smm.ShareableList([0.0, 0.0, 0.0])
         self.rotation = self.smm.ShareableList([0.0, 0.0, 0.0])
 
@@ -198,7 +199,8 @@ class TrainRenderTrack(MediaStreamTrack):
         send_back_image = self.shareData.render_image
         self.shareData.release()
 
-        send_back_image = VideoFrame.from_ndarray(send_back_image, format="rgb24")
+        send_back_image = VideoFrame.from_ndarray(
+            send_back_image, format="rgb24")
 
         send_back_image.pts = frame.pts
         send_back_image.time_base = frame.time_base
@@ -225,7 +227,8 @@ class RenderTrack(MediaStreamTrack):
         send_back_image = self.shareData.render_image
         self.shareData.release()
 
-        send_back_image = VideoFrame.from_ndarray(send_back_image, format="rgb24")
+        send_back_image = VideoFrame.from_ndarray(
+            send_back_image, format="rgb24")
 
         send_back_image.pts = pts
         send_back_image.time_base = time_base
@@ -300,6 +303,7 @@ class Viewer:
                     self.shareData.preview = info["preview"]
                     self.shareData.is_recording = info["isRecording"]
                     self.shareData.dataset = info["dataset"]
+                    self.shareData.downsample = info["downsample"]
 
                     self.shareData.release()
 
@@ -321,10 +325,12 @@ class Viewer:
             print(track.kind)
             if track.kind == "audio":
                 # pc.addTrack(player.audio)
-                pc.addTrack(RenderTrack(relay.subscribe(track), data=self.shareData))
+                pc.addTrack(RenderTrack(
+                    relay.subscribe(track), data=self.shareData))
                 pass
             elif track.kind == "video":
-                pc.addTrack(TrainRenderTrack(relay.subscribe(track), data=self.shareData))
+                pc.addTrack(TrainRenderTrack(
+                    relay.subscribe(track), data=self.shareData))
 
             @track.on("ended")
             async def on_ended():
@@ -343,7 +349,8 @@ class Viewer:
 
         return web.Response(
             content_type="application/json",
-            text=json.dumps({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type}),
+            text=json.dumps({"sdp": pc.localDescription.sdp,
+                            "type": pc.localDescription.type}),
         )
 
     def run(
@@ -351,7 +358,8 @@ class Viewer:
         host,
         port,
     ):
-        web.run_app(self.app, access_log=None, host=host, port=port, ssl_context=None)
+        web.run_app(self.app, access_log=None, host=host,
+                    port=port, ssl_context=None)
         pass
 
 
