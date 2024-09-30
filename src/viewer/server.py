@@ -33,7 +33,7 @@ class ViewerData:
         self.render_image_raw = self.smm.SharedMemory(size=image.nbytes)
 
         # dara =[width, height, is_updated]
-        self.datas = self.smm.ShareableList([-1, -1, 100, 100, False, False, False, 8, False, 2, 0])
+        self.datas = self.smm.ShareableList([-1, -1, 100, 100, False, False, False, 8, False, 2, 0, False, "dataset/nerfstudio/poster"])
         self.position = self.smm.ShareableList([0.0, 0.0, 0.0])
         self.rotation = self.smm.ShareableList([0.0, 0.0, 0.0])
 
@@ -132,6 +132,22 @@ class ViewerData:
     @downsample.setter
     def downsample(self, value):
         self.datas[9] = value
+
+    @property
+    def is_recording(self):
+        return self.datas[11]
+
+    @is_recording.setter
+    def is_recording(self, value):
+        self.datas[11] = value
+
+    @property
+    def dataset(self):
+        return self.datas[12]
+
+    @dataset.setter
+    def dataset(self, value):
+        self.datas[12] = value
 
     def require(self):
         self.lock.acquire()
@@ -282,6 +298,8 @@ class Viewer:
                     self.shareData.grid = info["grid"]
                     self.shareData.play = info["play"]
                     self.shareData.preview = info["preview"]
+                    self.shareData.is_recording = info["isRecording"]
+                    self.shareData.dataset = info["dataset"]
 
                     self.shareData.release()
 

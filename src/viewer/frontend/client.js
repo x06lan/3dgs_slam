@@ -101,6 +101,7 @@ function negotiate(config) {
 function start(config) {
     // config.play = true;
     guiParams.play = true;
+    guiParams.isRecording = true;
 
     pc = createPeerConnection(config.useStun);
 
@@ -136,6 +137,8 @@ function start(config) {
                     "grid": guiParams.grid,
                     "preview": guiParams.preview,
                     "play": guiParams.play,
+                    "isRecording": guiParams.isRecording,
+                    "dataset": guiParams.dataset,
                 };
                 // console.log(message)
 

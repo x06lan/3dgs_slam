@@ -162,6 +162,8 @@ def read_images_binary(path_to_model_file: Union[str, Path]) -> Dict[int, ImageI
                 xys=xys,
                 # point3D_ids=point3D_ids,
             )
+
+            # print(image_name)
     return images
 
 

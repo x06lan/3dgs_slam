@@ -158,7 +158,6 @@ class CoverSplatter(Splatter):
         assert self.camera != None
 
         render_image = super().forward(image_info)
-
         if cover:
             assert render_image.shape[:2] == ground_truth.shape[:2]
 
