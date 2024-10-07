@@ -111,7 +111,7 @@ class Tracker:
         # self.dataset_dir = "dataset/nerfstudio/stump"
         # self.dataset_dir = "dataset/nerfstudio/aspen"
         # self.dataset_dir = "dataset/nerfstudio/redwoods2"
-        self.ckpt = "3dgs_slam_ckpt.pth"
+        self.ckpt = "3dgs_slam_ckpt_fine.pth"
         self.reset(clear_dir=False)
 
     def reset(self, clear_dir=False):

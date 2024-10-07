@@ -242,8 +242,8 @@ class Splatter(nn.Module):
 
         tile_n_point = torch.zeros(
             len(self.tile_info), device=self.device, dtype=torch.int32)
-        # MAXP = len(self.culling_gaussian_3d_image_space.pos)//10
-        tile_max_point = max(culling_gaussians.pos.shape[0]//20, 5)
+        tile_max_point = torch.tensor(culling_gaussians.pos.shape[0]//20)
+        tile_max_point = torch.clamp(tile_max_point, min=2, max=2**10)
 
         tile_gaussian_list = torch.ones(
             len(self.tile_info), tile_max_point, device=self.device, dtype=torch.int32) * -1

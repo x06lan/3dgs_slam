@@ -14,15 +14,14 @@ ENV TZ=UTC
 WORKDIR "/build"
 
 RUN apt update -y
-RUN apt install -y rsync unzip vim g++ wget pip sudo
+RUN apt install -y git rsync unzip vim g++ wget pip sudo
 
 # system packages 
-RUN DEBIAN_FRONTEND=noninteractive  apt install -y \
+RUN DEBIAN_FRONTEND=noninteractive apt install -y \
     python3 \
     python3-sdl2 \
     python3-tk \
     python3-pip \
-    sudo \
     build-essential \
     cmake \
     libsuitesparse-dev \
@@ -40,22 +39,12 @@ RUN DEBIAN_FRONTEND=noninteractive  apt install -y \
     libgl1 \
     ffmpeg \
     libsm6 \
-    libxext6
-
-# Install python packages
-
-RUN pip3 install torch torchvision torchaudio xformers --index-url https://download.pytorch.org/whl/cu118
-
-# COLMAP dependencies
-RUN apt-get install -y --no-install-recommends --no-install-suggests \
-    cmake \
+    libxext6 \
     ninja-build \
-    build-essential \
     libboost-program-options-dev \
     libboost-filesystem-dev \
     libboost-graph-dev \
     libboost-system-dev \
-    libeigen3-dev \
     libflann-dev \
     libfreeimage-dev \
     libmetis-dev \
@@ -63,7 +52,6 @@ RUN apt-get install -y --no-install-recommends --no-install-suggests \
     libgtest-dev \
     libgmock-dev \
     libsqlite3-dev \
-    libglew-dev \
     qtbase5-dev \
     libqt5opengl5-dev \
     libcgal-dev \
@@ -80,9 +68,12 @@ RUN cd ./colmap && \
     ninja install
 
 # Install python packages
+RUN pip3 install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 xformers --index-url https://download.pytorch.org/whl/cu118
+
 COPY ./requirements.txt ./requirements.txt
 RUN pip3 install -r requirements.txt 
-RUN pip3 install torchmetrics einops ruff
+
+
 RUN cd ./colmap/pycolmap && \
     python3 -m pip install .
 
