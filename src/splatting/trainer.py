@@ -1,7 +1,10 @@
+import cv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 from tqdm import tqdm
+from time import sleep
 from typing import Union, Tuple, Optional
 
 # from torchvision import transforms
@@ -41,7 +44,7 @@ class Trainer:
 
     def depth_normalize(self, depth: torch.Tensor):
         depth = depth.to(torch.float)
-        # depth, _ = normalize(depth)
+        depth, _ = normalize(depth)
         depth = maxmin_normalize(depth)
         return depth
 
@@ -61,10 +64,16 @@ class Trainer:
     def step(self, image_info: ImageInfo, ground_truth: torch.Tensor, cover: bool = False, grad: bool = True) -> Tuple[torch.Tensor, dict]:
 
         # assert ground_truth.device == self.splatter.device
+        params = [
+            {"params": self.splatter.gaussians.pos, "lr": self.lr*2.0},
+            {"params": self.splatter.gaussians.rgb, "lr": self.lr},
+            {"params": self.splatter.gaussians.scale, "lr": self.lr*1.5},
+            {"params": self.splatter.gaussians.quaternion, "lr": self.lr},
+            {"params": self.splatter.gaussians.opacity, "lr": self.lr},
+        ]
 
         self.optimizer = torch.optim.Adam(
-            self.splatter.gaussians.parameters(), lr=self.lr, betas=(0.9, 0.99))
-        self.optimizer.zero_grad()
+            params=params, betas=(0.9, 0.99))
 
         if not grad:
             with torch.no_grad():
@@ -96,7 +105,8 @@ class Trainer:
             gt_depth = self.depth_normalize(gt_depth)
 
             depth_loss = self.critic(render_depth, gt_depth)
-            loss = rgb_loss + depth_loss * 10
+            # loss = rgb_loss + depth_loss
+            loss = rgb_loss
         except:
             loss = rgb_loss
 
@@ -109,6 +119,7 @@ class Trainer:
         }
 
         if not torch.isnan(loss):
+            self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
@@ -120,26 +131,26 @@ class Trainer:
 
 if __name__ == "__main__":
     frame = 0
-    downsample = 1
-    lr = 0.003
+    downsample = 4
+    lr = 0.001
     # lr = 0.0005
     batch = 40
     refine = False
     # refine = True
     test = False
-    # test = True
+    test = True
 
     if test:
         batch = 1
 
-    dataset = ColmapDataset(
-        "./record",
-        # dataset = ColmapDataset("dataset/nerfstudio/stump",
-        # dataset = ColmapDataset("dataset/nerfstudio/aspen",
-        # dataset = ColmapDataset("dataset/nerfstudio/redwoods2",
-        # dataset = ColmapDataset("dataset/nerfstudio/person",
-        downsample_factor=downsample,
-    )
+    # dataset = ColmapDataset("./record",
+    dataset = ColmapDataset("dataset/nerfstudio/poster",
+                            # dataset = ColmapDataset("dataset/nerfstudio/stump",
+                            # dataset = ColmapDataset("dataset/nerfstudio/aspen",
+                            # dataset = ColmapDataset("dataset/nerfstudio/redwoods2",
+                            # dataset = ColmapDataset("dataset/nerfstudio/person",
+                            downsample_factor=downsample,
+                            )
 
     if test:
         trainer = Trainer(
@@ -173,29 +184,40 @@ if __name__ == "__main__":
 
         current = image_info.id
 
-        for i in range(1):
-            # for info, gt in reversed(window_list):
-            for info, gt in window_list:
-
+        # for info, gt in reversed(window_list):
+        for info, gt in window_list:
+            for i in range(2):
                 if test:
                     grad = False
                     cover = False
                 else:
                     grad = True
-                    cover = (i == 0) and (current == info.id)
+                    cover = i == 0 and (current == info.id)
 
                 render_image, status = trainer.step(
                     image_info=info, ground_truth=gt, cover=cover, grad=grad)
-                # print(render_image.shape)
+            # print(render_image.shape)
 
-                bar.set_postfix(status)
-                # save image
+            bar.set_postfix(status)
+            # save image
         save_image("output.png", render_image[..., :3])
 
-        depth_image = render_image[..., 4].unsqueeze(-1)
+        if img_id % 3 == 0 and not test:
+            status = trainer.splatter.adaption_control()
+            print(status)
+
+        depth_image = render_image[..., 4].detach().unsqueeze(-1)
         depth_image = maxmin_normalize(depth_image)
-        depth_image = depth_image.repeat(1, 1, 3)
+        # turn depth to rgb with jet colormap
+        depth_image = depth_image.squeeze().cpu().numpy()
+        # turn dpeht to rgb with jet colormap
+        depth_image = cv2.applyColorMap(
+            (depth_image * 255).astype(np.uint8), cv2.COLORMAP_JET)
+
+        # depth_image = depth_image.repeat(1, 1, 3)
         save_image("depth_output.png", depth_image)
 
         if not test:
             trainer.splatter.save_ckpt("3dgs_slam_ckpt.pth")
+        else:
+            sleep(0.05)
