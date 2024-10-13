@@ -351,8 +351,8 @@ if __name__ == "__main__":
 
     frame = 0
     downsample = 2
-    # dataset = ColmapDataset("dataset/nerfstudio/poster",
-    #                         downsample_factor=downsample)
+    dataset = ColmapDataset("dataset/nerfstudio/poster",
+                            downsample_factor=downsample)
     # dataset = ColmapDataset("dataset/nerfstudio/aspen")
 
     # splatter = Splatter(init_points=dataset.points3d,

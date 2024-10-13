@@ -118,9 +118,11 @@ class CoverSplatter(Splatter):
             torch.ones(
                 # (uncover_point.shape[0], 3))*self.distance*0.001
                 (uncover_point.shape[0], 3)
-            )
-            * 0.02
-        )
+            )*self.distance*0.005
+        ).to(self.device)
+        # uncover_scale *= torch.clamp(uncover_depth *
+        #                              self.distance*0.01, 0.002, 0.2)
+        # uncover_scale *= torch.clamp(float(, 0.002, 0.2)
         # scale = (1.0/(uncover_depth*0.09+0.001))*4.0
         # scale = uncover_depth/self.camera.fx
         # uncover_scale = torch.ones(
@@ -140,12 +142,12 @@ class CoverSplatter(Splatter):
         # append = False
 
         # scale < 0.01
-        del_mask = torch.norm(self.gaussians.scale, dim=-1) < 0.01
+        del_mask = torch.norm(self.gaussians.scale, dim=-1) < 0.015
         # del_mask = self.gaussians.scale < 0.01
         # del_mask = del_mask.any(dim=-1)
 
         # opacity < 0.001
-        del_mask = torch.logical_or(del_mask, self.gaussians.opacity < 0.001)
+        del_mask = torch.logical_or(del_mask, self.gaussians.opacity < 0.01)
 
         delete_count = del_mask.sum()
 
@@ -153,7 +155,16 @@ class CoverSplatter(Splatter):
 
         if append:
             # too large scale
-            add_mask = torch.norm(self.gaussians.scale, dim=-1) > 0.8
+            add_mask = torch.norm(self.gaussians.scale, dim=-1) > 0.5
+            # too length scale
+            length_mask = torch.max(self.gaussians.scale, dim=-1)[0] / \
+                torch.min(self.gaussians.scale, dim=-1)[0] > 5
+            add_mask = torch.logical_and(add_mask, length_mask)
+
+            # too large scale
+            large_mask = torch.norm(self.gaussians.scale, dim=-1) > 1.0
+            add_mask = torch.logical_or(add_mask, large_mask)
+
             # add_mask = self.gaussians.scale > 0.8
             # add_mask = add_mask.any(dim=-1)
 
@@ -168,7 +179,7 @@ class CoverSplatter(Splatter):
 
                 dist = torch.distributions.multivariate_normal.MultivariateNormal(
                     self.gaussians.pos[add_mask],
-                    self.gaussians.scale_matrix()[add_mask]*0.7,
+                    self.gaussians.scale_matrix()[add_mask]*0.3,
                 )
                 p1 = dist.sample()
                 p2 = dist.sample()
@@ -178,7 +189,7 @@ class CoverSplatter(Splatter):
                 # change origin gaussian position to sample
                 with torch.no_grad():
                     self.gaussians.pos[add_mask] = p2
-                    self.gaussians.scale[add_mask] *= 0.7
+                    self.gaussians.scale[add_mask] *= 0.5
 
         # remove gaussian
         self.gaussians = self.gaussians.filte(
@@ -207,7 +218,9 @@ class CoverSplatter(Splatter):
             gt_depth = self.depth_estimator.estimate(
                 ground_truth.cpu().numpy())
 
-            scaled_depth = (1.0 / (gt_depth * 0.08 + 0.001)) * 3.0
+            # black magic number
+            # scaled_depth = (1.0 / (gt_depth * 0.08 + 0.001)) * 3.0
+            scaled_depth = (1.0 / (gt_depth * 0.08 + 0.001)) * 5.0
 
             append_gaussian = self.cover_point(
                 image_info, ground_truth, scaled_depth, render_image, alpha_threshold=0.7)

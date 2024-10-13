@@ -105,8 +105,8 @@ class Trainer:
             gt_depth = self.depth_normalize(gt_depth)
 
             depth_loss = self.critic(render_depth, gt_depth)
-            # loss = rgb_loss + depth_loss
-            loss = rgb_loss
+            loss = rgb_loss + depth_loss
+            # loss = rgb_loss
         except:
             loss = rgb_loss
 
@@ -129,28 +129,49 @@ class Trainer:
         pass
 
 
+class DataManager:
+    def __init__(self, batch=40, stride=5):
+        self.data = []
+        self.batch = batch
+        self.stride = stride
+        self.max_length = 200
+
+    def add_image(self, image, image_info):
+        self.data.insert(0, (image, image_info))
+        if len(self.data) >= self.max_length:
+            self.data.pop()
+
+    def get_train_data(self):
+        length = len(self.data)
+        length = min(length, self.batch * self.stride)
+
+        return self.data[0: length: self.stride]
+
+
 if __name__ == "__main__":
     frame = 0
     downsample = 4
-    lr = 0.001
+    lr = 0.002
     # lr = 0.0005
-    batch = 40
+    batch = 15
+    grid_downsample = 12
     refine = False
     # refine = True
     test = False
-    test = True
+    # test = True
 
     if test:
         batch = 1
 
     # dataset = ColmapDataset("./record",
-    dataset = ColmapDataset("dataset/nerfstudio/poster",
-                            # dataset = ColmapDataset("dataset/nerfstudio/stump",
-                            # dataset = ColmapDataset("dataset/nerfstudio/aspen",
-                            # dataset = ColmapDataset("dataset/nerfstudio/redwoods2",
-                            # dataset = ColmapDataset("dataset/nerfstudio/person",
-                            downsample_factor=downsample,
-                            )
+    dataset = ColmapDataset(
+        # "dataset/nerfstudio/poster",
+        # "dataset/nerfstudio/stump",
+        "dataset/nerfstudio/aspen",
+        # "dataset/nerfstudio/redwoods2",
+        # "dataset/nerfstudio/person",
+        downsample_factor=downsample,
+    )
 
     if test:
         trainer = Trainer(
@@ -161,9 +182,11 @@ if __name__ == "__main__":
             downsample=downsample,
         )
     else:
-        trainer = Trainer(camera=dataset.camera, lr=lr, downsample=downsample)
+        trainer = Trainer(camera=dataset.camera, lr=lr,
+                          downsample=downsample, distance=grid_downsample)
 
     bar = tqdm(range(0, len(dataset.image_info)))
+    dm = DataManager(batch=batch, stride=10)
 
     window_list = []
     for img_id in bar:
@@ -175,36 +198,39 @@ if __name__ == "__main__":
 
         image_info = dataset.image_info[frame]
         # print(image_info.id)
+        dm.add_image(ground_truth, image_info)
 
-        if frame % 5 == 0:
-            window_list.append([image_info, ground_truth])
-
-            if len(window_list) > batch:
-                window_list.pop(0)
-
-        current = image_info.id
+        status = {}
 
         # for info, gt in reversed(window_list):
-        for info, gt in window_list:
-            for i in range(2):
+        for it, (gt, info) in enumerate(dm.get_train_data()):
+            # print(info.id)
+
+            retrain_count = 2
+            if test:
+                retrain_count = 1
+
+            for i in range(retrain_count):
                 if test:
                     grad = False
                     cover = False
                 else:
                     grad = True
-                    cover = i == 0 and (current == info.id)
+                    cover = it == 0 and i == 0
 
                 render_image, status = trainer.step(
                     image_info=info, ground_truth=gt, cover=cover, grad=grad)
-            # print(render_image.shape)
-
-            bar.set_postfix(status)
-            # save image
+            if status:
+                status["count"] = f'{status["count"]/1000 :.2f}k'
+        bar.set_postfix(status)
+        # save image
         save_image("output.png", render_image[..., :3])
 
-        if img_id % 3 == 0 and not test:
-            status = trainer.splatter.adaption_control()
-            print(status)
+        if img_id % 1 == 0 and not test:
+            control_status = trainer.splatter.adaption_control()
+            # status.update(control_status)
+            print(control_status)
+        # bar.set_postfix(status)
 
         depth_image = render_image[..., 4].detach().unsqueeze(-1)
         depth_image = maxmin_normalize(depth_image)
