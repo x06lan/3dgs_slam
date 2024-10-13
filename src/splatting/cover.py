@@ -118,7 +118,7 @@ class CoverSplatter(Splatter):
             torch.ones(
                 # (uncover_point.shape[0], 3))*self.distance*0.001
                 (uncover_point.shape[0], 3)
-            )*self.distance*0.005
+            )*self.distance*0.003
         ).to(self.device)
         # uncover_scale *= torch.clamp(uncover_depth *
         #                              self.distance*0.01, 0.002, 0.2)
@@ -136,18 +136,23 @@ class CoverSplatter(Splatter):
 
         return append_gaussian
 
-    def adaption_control(self, append=True):
+    def adaptive_control(self, append=True):
         # append = self.gaussians.pos.grad is not None
         # append = True
         # append = False
 
         # scale < 0.01
-        del_mask = torch.norm(self.gaussians.scale, dim=-1) < 0.015
-        # del_mask = self.gaussians.scale < 0.01
-        # del_mask = del_mask.any(dim=-1)
+
+        norm_scale, _ = normalize(torch.norm(self.gaussians.scale, dim=-1))
+
+        # del_mask = norm_scale < -2.5
+        del_mask = torch.norm(self.gaussians.scale, dim=-1) < 0.001
 
         # opacity < 0.001
         del_mask = torch.logical_or(del_mask, self.gaussians.opacity < 0.01)
+
+        # min_length_mask = torch.min(self.gaussians.scale, dim=-1)[0] < 0.0001
+        # del_mask = torch.logical_or(del_mask, min_length_mask)
 
         delete_count = del_mask.sum()
 
@@ -155,15 +160,16 @@ class CoverSplatter(Splatter):
 
         if append:
             # too large scale
-            add_mask = torch.norm(self.gaussians.scale, dim=-1) > 0.5
+            add_mask = torch.norm(self.gaussians.scale, dim=-1) > 0.8
             # too length scale
-            length_mask = torch.max(self.gaussians.scale, dim=-1)[0] / \
-                torch.min(self.gaussians.scale, dim=-1)[0] > 5
-            add_mask = torch.logical_and(add_mask, length_mask)
+            # length_mask = torch.max(self.gaussians.scale, dim=-1)[0] / \
+            #     torch.min(self.gaussians.scale, dim=-1)[0] > 5
+            # add_mask = torch.logical_and(add_mask, length_mask)
 
             # too large scale
-            large_mask = torch.norm(self.gaussians.scale, dim=-1) > 1.0
-            add_mask = torch.logical_or(add_mask, large_mask)
+            # large_mask = torch.norm(self.gaussians.scale, dim=-1) > 1.0
+            # add_mask = norm_scale > 4.0
+            # add_mask = torch.logical_or(add_mask, large_mask)
 
             # add_mask = self.gaussians.scale > 0.8
             # add_mask = add_mask.any(dim=-1)
@@ -186,10 +192,12 @@ class CoverSplatter(Splatter):
 
                 # give new position base on sample position
                 append_gaussian.pos = p1
+                append_gaussian.scale *= 0.5
                 # change origin gaussian position to sample
                 with torch.no_grad():
                     self.gaussians.pos[add_mask] = p2
                     self.gaussians.scale[add_mask] *= 0.5
+                #     pass
 
         # remove gaussian
         self.gaussians = self.gaussians.filte(
@@ -217,10 +225,18 @@ class CoverSplatter(Splatter):
 
             gt_depth = self.depth_estimator.estimate(
                 ground_truth.cpu().numpy())
+            # gt_depth, _ = normalize(gt_depth)
+            # print(gt_depth.max())
+            # print(gt_depth.min())
+            # gt_depth = torch.clamp(gt_depth, -3, 3)
+            # gt_depth = (gt_depth+3)/6
 
             # black magic number
-            # scaled_depth = (1.0 / (gt_depth * 0.08 + 0.001)) * 3.0
-            scaled_depth = (1.0 / (gt_depth * 0.08 + 0.001)) * 5.0
+            scaled_depth = (1.0 / (gt_depth * 0.08 + 0.001)) * 3.0
+            # scaled_depth = (1.0 / (gt_depth * 0.08 + 0.001)) * 5.0
+            # scaled_depth = (1.0 / (gt_depth**2.5 * 0.08 + 0.001)) * 360
+            # scaled_depth = (1.0 / (gt_depth**1.5 * 0.08 + 0.001)) * 14
+            # scaled_depth = (1.0 / ((gt_depth)**1.5 * 0.08 + 0.001)) * 10
 
             append_gaussian = self.cover_point(
                 image_info, ground_truth, scaled_depth, render_image, alpha_threshold=0.7)
@@ -331,5 +347,5 @@ if __name__ == "__main__":
 
         splatter.save_ckpt("3dgs_slam_ckpt.pth")
         optimizer.zero_grad()
-        status = splatter.adaption_control()
+        status = splatter.adaptive_control()
         print(status)

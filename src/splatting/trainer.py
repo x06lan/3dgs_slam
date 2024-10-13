@@ -150,11 +150,11 @@ class DataManager:
 
 if __name__ == "__main__":
     frame = 0
-    downsample = 4
+    downsample = 2
     lr = 0.002
     # lr = 0.0005
-    batch = 15
-    grid_downsample = 12
+    batch = 30
+    grid_downsample = 8
     refine = False
     # refine = True
     test = False
@@ -165,11 +165,16 @@ if __name__ == "__main__":
 
     # dataset = ColmapDataset("./record",
     dataset = ColmapDataset(
-        # "dataset/nerfstudio/poster",
+        "dataset/nerfstudio/poster",
+        # "dataset/nerfstudio/record",
         # "dataset/nerfstudio/stump",
-        "dataset/nerfstudio/aspen",
+        # "dataset/nerfstudio/aspen",
         # "dataset/nerfstudio/redwoods2",
         # "dataset/nerfstudio/person",
+        # "dataset/nerfstudio/library",
+        # "dataset/nerfstudio/plane",
+        # "dataset/nerfstudio/Egypt",
+        # "dataset/nerfstudio/storefront",
         downsample_factor=downsample,
     )
 
@@ -186,7 +191,7 @@ if __name__ == "__main__":
                           downsample=downsample, distance=grid_downsample)
 
     bar = tqdm(range(0, len(dataset.image_info)))
-    dm = DataManager(batch=batch, stride=10)
+    dm = DataManager(batch=batch, stride=5)
 
     window_list = []
     for img_id in bar:
@@ -206,7 +211,7 @@ if __name__ == "__main__":
         for it, (gt, info) in enumerate(dm.get_train_data()):
             # print(info.id)
 
-            retrain_count = 2
+            retrain_count = 1
             if test:
                 retrain_count = 1
 
@@ -227,7 +232,7 @@ if __name__ == "__main__":
         save_image("output.png", render_image[..., :3])
 
         if img_id % 1 == 0 and not test:
-            control_status = trainer.splatter.adaption_control()
+            control_status = trainer.splatter.adaptive_control()
             # status.update(control_status)
             print(control_status)
         # bar.set_postfix(status)

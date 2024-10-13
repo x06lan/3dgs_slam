@@ -265,7 +265,7 @@ class Tracker:
                     # print(i, info.id, status)
                     display_image = render_image[..., :3]
                 if self.train_progress % 1 == 0:
-                    control_status = self.trainer.splatter.adaption_control()
+                    control_status = self.trainer.splatter.adaptive_control()
                     print(control_status)
 
                 self.train_progress += 1

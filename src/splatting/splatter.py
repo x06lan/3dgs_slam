@@ -203,7 +203,7 @@ class Splatter(nn.Module):
         half_width = self.camera.width*magic_number/2/self.camera.fx
         half_height = self.camera.height*magic_number/2/self.camera.fy
 
-        # 2d position,2d covariance, mask
+        # 3d position in image space,2d covariance, mask
         _pos, _cov, mask = global_culling(
             self.gaussians.pos,
             self.gaussians.normalize_quaternion(),
