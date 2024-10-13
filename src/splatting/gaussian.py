@@ -62,7 +62,7 @@ class Gaussians(nn.Module):
 
     def scale_matrix(self):
         assert self.scale is not None
-        return torch.diag_embed(self.scale)
+        return torch.diag_embed(torch.abs(self.scale))
 
     def normalize_scale(self):
         assert self.scale is not None
@@ -90,7 +90,7 @@ class Gaussians(nn.Module):
         _cobj.cov = self.covariance.clone()
         return _cobj
 
-    def filte(self, mask):
+    def filte(self, mask, init_value=False):
 
         if self.covariance is not None:
             return Gaussians(
@@ -98,6 +98,7 @@ class Gaussians(nn.Module):
                 rgb=self.rgb[mask],
                 opacty=self.opacity[mask],
                 covariance=self.covariance[mask],
+                init_value=init_value
             )
         elif self.quaternion is not None and self.scale is not None:
             return Gaussians(
@@ -106,6 +107,7 @@ class Gaussians(nn.Module):
                 opacty=self.opacity[mask],
                 quaternion=self.quaternion[mask],
                 scale=self.scale[mask],
+                init_value=init_value
             )
         else:
             raise ValueError("No support filter")
@@ -129,7 +131,7 @@ class Gaussians(nn.Module):
         if scale_activation == "abs":
             _scale = self.scale.abs()+EPS
         elif scale_activation == "exp":
-            _scale = turn_exp(self.scale)
+            _scale = trunc_exp(self.scale)
         else:
             print("No support scale activation")
             exit()

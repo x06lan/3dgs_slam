@@ -203,7 +203,7 @@ class Splatter(nn.Module):
         half_width = self.camera.width*magic_number/2/self.camera.fx
         half_height = self.camera.height*magic_number/2/self.camera.fy
 
-        # 2d position,2d covariance, mask
+        # 3d position in image space,2d covariance, mask
         _pos, _cov, mask = global_culling(
             self.gaussians.pos,
             self.gaussians.normalize_quaternion(),
@@ -242,8 +242,8 @@ class Splatter(nn.Module):
 
         tile_n_point = torch.zeros(
             len(self.tile_info), device=self.device, dtype=torch.int32)
-        # MAXP = len(self.culling_gaussian_3d_image_space.pos)//10
-        tile_max_point = max(culling_gaussians.pos.shape[0]//20, 5)
+        tile_max_point = torch.tensor(culling_gaussians.pos.shape[0]//20)
+        tile_max_point = torch.clamp(tile_max_point, min=2, max=2**10)
 
         tile_gaussian_list = torch.ones(
             len(self.tile_info), tile_max_point, device=self.device, dtype=torch.int32) * -1
@@ -351,8 +351,8 @@ if __name__ == "__main__":
 
     frame = 0
     downsample = 2
-    # dataset = ColmapDataset("dataset/nerfstudio/poster",
-    #                         downsample_factor=downsample)
+    dataset = ColmapDataset("dataset/nerfstudio/poster",
+                            downsample_factor=downsample)
     # dataset = ColmapDataset("dataset/nerfstudio/aspen")
 
     # splatter = Splatter(init_points=dataset.points3d,

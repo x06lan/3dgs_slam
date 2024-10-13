@@ -7,16 +7,16 @@ var dc = null, dcInterval = null;
 let currentTranslation = [0, 0, 0]
 let currentRotation= [0, 0, 0]
 
-setInterval(function(){ currentTranslation[0]+=parseInt(joy.GetX())*guiParams.speed*0.0001; }, 50);
-setInterval(function(){ currentTranslation[2]+=parseInt(joy.GetY())*guiParams.speed*0.0001;}, 50);
+setInterval(function(){ currentTranslation[0]-=parseInt(joy.GetX())*guiParams.speed*0.0001; }, 50);
+setInterval(function(){ currentTranslation[2]-=parseInt(joy.GetY())*guiParams.speed*0.0001;}, 50);
 
 window.addEventListener('deviceorientation', deviceOrientationHandler, false);
 function deviceOrientationHandler (eventData) {
     var dir = eventData.alpha+180;
-    var tiltFB = eventData.beta+270;
+    var tiltFB = eventData.beta+180;
     var tiltLR = eventData.gamma+180;
 
-    currentRotation = [dir, tiltFB, tiltLR]
+    currentRotation = [tiltFB,  dir,tiltLR]
 }
 function createPeerConnection(useSTUN) {
     var connection_config = {

@@ -1,7 +1,10 @@
+import cv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 from tqdm import tqdm
+from time import sleep
 from typing import Union, Tuple, Optional
 
 # from torchvision import transforms
@@ -41,7 +44,7 @@ class Trainer:
 
     def depth_normalize(self, depth: torch.Tensor):
         depth = depth.to(torch.float)
-        # depth, _ = normalize(depth)
+        depth, _ = normalize(depth)
         depth = maxmin_normalize(depth)
         return depth
 
@@ -61,10 +64,16 @@ class Trainer:
     def step(self, image_info: ImageInfo, ground_truth: torch.Tensor, cover: bool = False, grad: bool = True) -> Tuple[torch.Tensor, dict]:
 
         # assert ground_truth.device == self.splatter.device
+        params = [
+            {"params": self.splatter.gaussians.pos, "lr": self.lr*2.0},
+            {"params": self.splatter.gaussians.rgb, "lr": self.lr},
+            {"params": self.splatter.gaussians.scale, "lr": self.lr*1.5},
+            {"params": self.splatter.gaussians.quaternion, "lr": self.lr},
+            {"params": self.splatter.gaussians.opacity, "lr": self.lr},
+        ]
 
         self.optimizer = torch.optim.Adam(
-            self.splatter.gaussians.parameters(), lr=self.lr, betas=(0.9, 0.99))
-        self.optimizer.zero_grad()
+            params=params, betas=(0.9, 0.99))
 
         if not grad:
             with torch.no_grad():
@@ -96,7 +105,8 @@ class Trainer:
             gt_depth = self.depth_normalize(gt_depth)
 
             depth_loss = self.critic(render_depth, gt_depth)
-            loss = rgb_loss + depth_loss * 10
+            loss = rgb_loss + depth_loss
+            # loss = rgb_loss
         except:
             loss = rgb_loss
 
@@ -109,6 +119,7 @@ class Trainer:
         }
 
         if not torch.isnan(loss):
+            self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
@@ -118,12 +129,32 @@ class Trainer:
         pass
 
 
+class DataManager:
+    def __init__(self, batch=40, stride=5):
+        self.data = []
+        self.batch = batch
+        self.stride = stride
+        self.max_length = 200
+
+    def add_image(self, image, image_info):
+        self.data.insert(0, (image, image_info))
+        if len(self.data) >= self.max_length:
+            self.data.pop()
+
+    def get_train_data(self):
+        length = len(self.data)
+        length = min(length, self.batch * self.stride)
+
+        return self.data[0: length: self.stride]
+
+
 if __name__ == "__main__":
     frame = 0
-    downsample = 1
-    lr = 0.003
+    downsample = 2
+    lr = 0.002
     # lr = 0.0005
-    batch = 40
+    batch = 30
+    grid_downsample = 8
     refine = False
     # refine = True
     test = False
@@ -132,12 +163,18 @@ if __name__ == "__main__":
     if test:
         batch = 1
 
+    # dataset = ColmapDataset("./record",
     dataset = ColmapDataset(
-        "./record",
-        # dataset = ColmapDataset("dataset/nerfstudio/stump",
-        # dataset = ColmapDataset("dataset/nerfstudio/aspen",
-        # dataset = ColmapDataset("dataset/nerfstudio/redwoods2",
-        # dataset = ColmapDataset("dataset/nerfstudio/person",
+        "dataset/nerfstudio/poster",
+        # "dataset/nerfstudio/record",
+        # "dataset/nerfstudio/stump",
+        # "dataset/nerfstudio/aspen",
+        # "dataset/nerfstudio/redwoods2",
+        # "dataset/nerfstudio/person",
+        # "dataset/nerfstudio/library",
+        # "dataset/nerfstudio/plane",
+        # "dataset/nerfstudio/Egypt",
+        # "dataset/nerfstudio/storefront",
         downsample_factor=downsample,
     )
 
@@ -150,9 +187,11 @@ if __name__ == "__main__":
             downsample=downsample,
         )
     else:
-        trainer = Trainer(camera=dataset.camera, lr=lr, downsample=downsample)
+        trainer = Trainer(camera=dataset.camera, lr=lr,
+                          downsample=downsample, distance=grid_downsample)
 
     bar = tqdm(range(0, len(dataset.image_info)))
+    dm = DataManager(batch=batch, stride=5)
 
     window_list = []
     for img_id in bar:
@@ -164,38 +203,52 @@ if __name__ == "__main__":
 
         image_info = dataset.image_info[frame]
         # print(image_info.id)
+        dm.add_image(ground_truth, image_info)
 
-        if frame % 5 == 0:
-            window_list.append([image_info, ground_truth])
+        status = {}
 
-            if len(window_list) > batch:
-                window_list.pop(0)
+        # for info, gt in reversed(window_list):
+        for it, (gt, info) in enumerate(dm.get_train_data()):
+            # print(info.id)
 
-        current = image_info.id
+            retrain_count = 1
+            if test:
+                retrain_count = 1
 
-        for i in range(1):
-            # for info, gt in reversed(window_list):
-            for info, gt in window_list:
-
+            for i in range(retrain_count):
                 if test:
                     grad = False
                     cover = False
                 else:
                     grad = True
-                    cover = (i == 0) and (current == info.id)
+                    cover = it == 0 and i == 0
 
                 render_image, status = trainer.step(
                     image_info=info, ground_truth=gt, cover=cover, grad=grad)
-                # print(render_image.shape)
-
-                bar.set_postfix(status)
-                # save image
+            if status:
+                status["count"] = f'{status["count"]/1000 :.2f}k'
+        bar.set_postfix(status)
+        # save image
         save_image("output.png", render_image[..., :3])
 
-        depth_image = render_image[..., 4].unsqueeze(-1)
+        if img_id % 1 == 0 and not test:
+            control_status = trainer.splatter.adaptive_control()
+            # status.update(control_status)
+            print(control_status)
+        # bar.set_postfix(status)
+
+        depth_image = render_image[..., 4].detach().unsqueeze(-1)
         depth_image = maxmin_normalize(depth_image)
-        depth_image = depth_image.repeat(1, 1, 3)
+        # turn depth to rgb with jet colormap
+        depth_image = depth_image.squeeze().cpu().numpy()
+        # turn dpeht to rgb with jet colormap
+        depth_image = cv2.applyColorMap(
+            (depth_image * 255).astype(np.uint8), cv2.COLORMAP_JET)
+
+        # depth_image = depth_image.repeat(1, 1, 3)
         save_image("depth_output.png", depth_image)
 
         if not test:
             trainer.splatter.save_ckpt("3dgs_slam_ckpt.pth")
+        else:
+            sleep(0.05)

@@ -272,7 +272,7 @@ class Viewer:
         pcs.add(pc)
 
         def log_info(msg, *args):
-            logger.info(pc_id + " " + msg, *args)
+            print(pc_id, msg, *args)
 
         log_info("Created for %s", request.remote)
 

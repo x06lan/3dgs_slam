@@ -100,8 +100,8 @@ class Tracker:
     def __init__(self, data, data_dir="record"):
         self.shareData: ViewerData = data
         self.preview = True
-        self.batch = 10
-        self.lr = 0.005
+        self.batch = 30
+        self.lr = 0.001
         self.stride = 5
 
         self.data_dir = data_dir
@@ -111,6 +111,7 @@ class Tracker:
         # self.dataset_dir = "dataset/nerfstudio/stump"
         # self.dataset_dir = "dataset/nerfstudio/aspen"
         # self.dataset_dir = "dataset/nerfstudio/redwoods2"
+        # self.ckpt = "3dgs_slam_ckpt_fine.pth"
         self.ckpt = "3dgs_slam_ckpt.pth"
         self.reset(clear_dir=False)
 
@@ -241,7 +242,7 @@ class Tracker:
 
                 if self.train_progress == len(self.dataset.images):
                     # finish train, to preview
-                    # self.trainer.splatter.save_ckpt(self.ckpt)
+                    self.trainer.splatter.save_ckpt("3dgs_slam_ckpt_train.pth")
                     self.shareData.stage = 4
                     self.shareData.release()
                     print("PREVIEW")
@@ -263,6 +264,9 @@ class Tracker:
                         f"train {self.train_progress}/{len(self.dataset.images)}", status)
                     # print(i, info.id, status)
                     display_image = render_image[..., :3]
+                if self.train_progress % 1 == 0:
+                    control_status = self.trainer.splatter.adaptive_control()
+                    print(control_status)
 
                 self.train_progress += 1
 
@@ -311,7 +315,7 @@ class Tracker:
 
             self.shareData.image_update = False
             self.shareData.release()
-            time.sleep(0.015)
+            time.sleep(0.05)
 
 
 if __name__ == "__main__":

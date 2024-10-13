@@ -3,9 +3,9 @@ import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 from tqdm import tqdm
 from typing import Union, Tuple, Optional
-from torchvision import transforms
 from torchmetrics.image import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
 
 # import kornia
@@ -74,7 +74,7 @@ class CoverSplatter(Splatter):
         screen_space = image_coord.clone().to(torch.float32)
 
         screen_space = torch.cat((screen_space, torch.ones((batch, 1)).to(
-            torch.float32)), dim=1).to(self.device)  # Shape: (N, 4)
+            torch.float32)), dim=1).to(self.device)  # Shape: (N, 3)
 
         camera_space = torch.einsum(
             "ij,bj->bi", K_inv, screen_space)  # Shape: (N, 3)
@@ -118,9 +118,11 @@ class CoverSplatter(Splatter):
             torch.ones(
                 # (uncover_point.shape[0], 3))*self.distance*0.001
                 (uncover_point.shape[0], 3)
-            )
-            * 0.02
-        )
+            )*self.distance*0.003
+        ).to(self.device)
+        # uncover_scale *= torch.clamp(uncover_depth *
+        #                              self.distance*0.01, 0.002, 0.2)
+        # uncover_scale *= torch.clamp(float(, 0.002, 0.2)
         # scale = (1.0/(uncover_depth*0.09+0.001))*4.0
         # scale = uncover_depth/self.camera.fx
         # uncover_scale = torch.ones(
@@ -134,39 +136,83 @@ class CoverSplatter(Splatter):
 
         return append_gaussian
 
-    def adaption_control(self, gaussians: Gaussians, grad_threshold=10.0):
+    def adaptive_control(self, append=True):
+        # append = self.gaussians.pos.grad is not None
+        # append = True
+        # append = False
 
-        with_grad = not isinstance(gaussians.pos.grad, type(None))
-        with_grad = False
+        # scale < 0.01
 
-        if with_grad:
-            add_mask = gaussians.pos.grad > grad_threshold
-            add_mask = add_mask.any(-1)
+        norm_scale, _ = normalize(torch.norm(self.gaussians.scale, dim=-1))
 
-            append_gaussian = gaussians.filte(add_mask)
+        # del_mask = norm_scale < -2.5
+        del_mask = torch.norm(self.gaussians.scale, dim=-1) < 0.001
 
-        # scale < 0.1
-        del_mask = torch.norm(gaussians.scale, dim=-1) < 0.001
-        # scale > 100.0
-        del_mask = torch.logical_or(
-            del_mask, torch.norm(gaussians.scale, dim=-1) > 1000.0)
         # opacity < 0.001
-        del_mask = torch.logical_or(del_mask, gaussians.opacity < 0.0001)
+        del_mask = torch.logical_or(del_mask, self.gaussians.opacity < 0.01)
 
-        delete_count = torch.logical_not(del_mask).sum()
+        # min_length_mask = torch.min(self.gaussians.scale, dim=-1)[0] < 0.0001
+        # del_mask = torch.logical_or(del_mask, min_length_mask)
+
+        delete_count = del_mask.sum()
 
         append_count = 0
 
-        gaussians = gaussians.filte(torch.logical_not(del_mask))
+        if append:
+            # too large scale
+            add_mask = torch.norm(self.gaussians.scale, dim=-1) > 0.8
+            # too length scale
+            # length_mask = torch.max(self.gaussians.scale, dim=-1)[0] / \
+            #     torch.min(self.gaussians.scale, dim=-1)[0] > 5
+            # add_mask = torch.logical_and(add_mask, length_mask)
 
-        if with_grad:
+            # too large scale
+            # large_mask = torch.norm(self.gaussians.scale, dim=-1) > 1.0
+            # add_mask = norm_scale > 4.0
+            # add_mask = torch.logical_or(add_mask, large_mask)
 
-            add_mask = torch.logical_and(add_mask, torch.logical_not(del_mask))
+            # add_mask = self.gaussians.scale > 0.8
+            # add_mask = add_mask.any(dim=-1)
 
+            add_mask = torch.logical_and(
+                add_mask, torch.logical_not(del_mask))
+
+            if add_mask.sum() == 0:
+                append = False
+            else:
+                append_gaussian = self.gaussians.filte(add_mask)
+                # append_gaussian.scale *= 0.5
+
+                dist = torch.distributions.multivariate_normal.MultivariateNormal(
+                    self.gaussians.pos[add_mask],
+                    self.gaussians.scale_matrix()[add_mask]*0.3,
+                )
+                p1 = dist.sample()
+                p2 = dist.sample()
+
+                # give new position base on sample position
+                append_gaussian.pos = p1
+                append_gaussian.scale *= 0.5
+                # change origin gaussian position to sample
+                with torch.no_grad():
+                    self.gaussians.pos[add_mask] = p2
+                    self.gaussians.scale[add_mask] *= 0.5
+                #     pass
+
+        # remove gaussian
+        self.gaussians = self.gaussians.filte(
+            torch.logical_not(del_mask), init_value=True)
+
+        if append:
             append_count = len(append_gaussian)
-            gaussians.append(append_gaussian)
+            self.gaussians.append(append_gaussian)
 
-        return gaussians, (delete_count, append_count)
+        status = {
+            "delete": delete_count.item(),
+            "append": append_count
+        }
+
+        return status
 
     def forward(self, image_info: ImageInfo, ground_truth: torch.Tensor, cover: bool = False):
 
@@ -178,28 +224,22 @@ class CoverSplatter(Splatter):
             assert render_image.shape[:2] == ground_truth.shape[:2]
 
             gt_depth = self.depth_estimator.estimate(
-                ground_truth.cpu().numpy()).cpu()
-            # uncover_depth = (uncover_depth-uncover_depth.min())/uncover_depth.max()
-            # depth = (1.0/(depth*0.07+0.001))
-            # uncover_depth = (1.0/(uncover_depth*0.03+0.001))*5.0
-            # uncover_depth = (1.0/(uncover_depth*0.03+0.0001))*2.5
-            scaled_depth = (1.0 / (gt_depth * 0.08 + 0.001)) * 3.0
-            # scaled_depth = (1.0/(gt_depth*0.08+0.001))*5.0
-            # poster
-            # uncover_depth = (1.0/(uncover_depth*0.01+0.001))*0.5
-            # uncover_depth = (1.0/(uncover_depth*0.08+0.001))*10.0
-            # uncover_depth = (1.0/(uncover_depth*0.1+0.0001))
-            # uncover_depth = 1.0/uncover_depth*0.01
+                ground_truth.cpu().numpy())
+            # gt_depth, _ = normalize(gt_depth)
+            # print(gt_depth.max())
+            # print(gt_depth.min())
+            # gt_depth = torch.clamp(gt_depth, -3, 3)
+            # gt_depth = (gt_depth+3)/6
 
-            # scaled_depth = (
-            #     1.0/(gt_depth*self.depth_paramter[0]+0.0001))*self.depth_paramter[1]
+            # black magic number
+            scaled_depth = (1.0 / (gt_depth * 0.08 + 0.001)) * 3.0
+            # scaled_depth = (1.0 / (gt_depth * 0.08 + 0.001)) * 5.0
+            # scaled_depth = (1.0 / (gt_depth**2.5 * 0.08 + 0.001)) * 360
+            # scaled_depth = (1.0 / (gt_depth**1.5 * 0.08 + 0.001)) * 14
+            # scaled_depth = (1.0 / ((gt_depth)**1.5 * 0.08 + 0.001)) * 10
 
             append_gaussian = self.cover_point(
                 image_info, ground_truth, scaled_depth, render_image, alpha_threshold=0.7)
-
-            self.gaussians, status = self.adaption_control(
-                self.gaussians, grad_threshold=0.01)
-            # print(status)
 
             self.gaussians.append(append_gaussian)
             return render_image, gt_depth
@@ -209,11 +249,11 @@ class CoverSplatter(Splatter):
 
 if __name__ == "__main__":
     frame = 0
-    downsample = 4
-    lr = 0.005
+    downsample = 2
+    lr = 0.003
     # lr = 0.001
     ssim_weight = 0.1
-    batch = 40
+    batch = 30
 
     dataset = ColmapDataset(
         "dataset/nerfstudio/poster",
@@ -295,13 +335,17 @@ if __name__ == "__main__":
 
         # print(depth)
         # save_image("output.png", depth)
-        image_info = dataset.image_info[0]
+        image_info = dataset.image_info[15]
         render_image, gt_depth = splatter(image_info, None, False)
-        render_depth = render_image[..., 4].unsqueeze(-1)
-        render_depth, _ = normalize(render_depth)
-        render_depth = maxmin_normalize(render_depth)
-        render_depth = render_depth.repeat(1, 1, 3).float()
-        image = render_depth
+        # render_depth = render_image[..., 4].unsqueeze(-1)
+        # render_depth, _ = normalize(render_depth)
+        # render_depth = maxmin_normalize(render_depth)
+        # render_depth = render_depth.repeat(1, 1, 3).float()
+        # image = render_depth
+        image = render_image[..., :3]
         save_image("output.png", image)
 
         splatter.save_ckpt("3dgs_slam_ckpt.pth")
+        optimizer.zero_grad()
+        status = splatter.adaptive_control()
+        print(status)
