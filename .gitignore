@@ -168,7 +168,8 @@ src/depth_estimator/depth_anything/checkpoints/*
 !src/depth_estimator/depth_anything/checkpoints/.gitkeep
 
 
-*.png
+image.png
+
 # save model
 *.pth
 /bin
